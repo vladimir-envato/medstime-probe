@@ -1,6 +1,6 @@
 ---
 name: app-explorer
-description: Drives an iOS app in the Simulator like a real user for one segment of an /explore-app run. Taps, types, and swipes toward a goal, judges whether each step worked, flags problems, and returns a structured segment log. Launched only by the explore-app skill.
+description: Drives an iOS app in the Simulator like a real user for one segment of an app-explorer run. Taps, types, and swipes toward a goal, judges whether each step worked, flags problems, and returns a structured segment log. Launched by scripts/explore.py.
 model: haiku
 effort: low
 tools: mcp__mobilebuildmcp__snapshot_ui, mcp__mobilebuildmcp__wait_for_ui, mcp__mobilebuildmcp__touch, mcp__mobilebuildmcp__long_press, mcp__mobilebuildmcp__swipe, mcp__mobilebuildmcp__type_text, mcp__mobilebuildmcp__button, mcp__mobilebuildmcp__key_press, mcp__mobilebuildmcp__screenshot, StructuredOutput
@@ -80,6 +80,8 @@ Report what you saw, not guesses about the code.
 - the app crashed and is not running.
 
 Never buy anything, sign in to real accounts, or enter real personal data.
+Use made-up names for anything you enter, for example "Testamin 10 mg",
+never a real medication.
 On a paywall, close it unless the goal says otherwise.
 
 ## Reply
@@ -108,6 +110,7 @@ Pass this object to the `StructuredOutput` tool. Put the `path` each
       "screen": "Screen name",
       "title": "One line",
       "details": "What you did, what you expected, what happened",
+      "step": "Number of the step in this reply where you saw it, starting at 1",
       "screenshot": "/path/from/screenshot or null"
     }
   ]

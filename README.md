@@ -4,84 +4,114 @@ An AI bot that uses an iOS app in the Simulator like a real user: it taps,
 types, and swipes through the app, judges whether each step worked, flags what
 looks broken or confusing, and writes a report with screenshots and stats.
 
-A small, UI-less take on tools like Harness, driven from Claude Code. It runs
-on your Claude subscription; no API key is needed.
+A small take on tools like Harness, driven by Claude Code. It runs on your
+Claude subscription; no API key is needed.
 
 ## Requirements
 
 - macOS with Xcode and an iOS Simulator runtime
-- Node.js 18 or later (for `npx`)
-- Claude Code
+- Python 3.9 or later (the one that ships with Xcode is enough)
+- Node.js 18 or later (for `npx`, which runs MobileBuildMCP)
+- The Claude Code CLI, signed in: `curl -fsSL https://claude.ai/install.sh | bash`,
+  then run `claude` once and `/login`
 
 The app under test stays in its own repo. app-explorer only reads its Xcode
 project to build it.
 
 ## Usage
 
-Open Claude Code in this folder and run:
+### Web UI
 
 ```
-/explore-app medstime onboarding
-/explore-app medstime autonomous
+python3 scripts/server.py
 ```
 
-The first time, Claude Code asks you to approve the `mobilebuildmcp` server
-from `.mcp.json`.
+Open http://127.0.0.1:8765. Pick an app and a scenario, set the number of
+steps, optionally write your own goal, and press Start. While the run goes, the
+page shows progress, cost, the bot's latest actions, a simulator screenshot
+refreshed every 3 seconds, steps, and findings. When it ends, the report
+appears below; earlier runs are listed on the left. The server listens on
+localhost only.
 
-Or run it from a terminal, without opening a session:
+### Terminal
 
 ```
-scripts/run.sh medstime onboarding
+python3 scripts/explore.py medstime onboarding
+python3 scripts/explore.py medstime autonomous --steps 40
+python3 scripts/explore.py medstime autonomous --steps 40 --goal "Add a medication, then edit it"
 ```
 
-This starts a fresh, non-interactive session (`claude -p`) for the run. A fresh
-session is cheaper: the orchestrator does not carry an earlier conversation
-into every call. The script runs the orchestrator on Sonnet; the bot stays on
-Haiku. `.claude/settings.json` pre-approves the tools a run needs, so
-it never stops at a permission prompt.
+`--steps` overrides the scenario's step budget. `--goal` replaces the
+scenario's goal and makes the run open-ended: the bot explores until the steps
+run out.
+
+### Claude Code
+
+In a Claude Code session in this folder, `/explore-app medstime onboarding`
+runs `explore.py` and summarizes the report in chat.
+
+## Output
 
 Each run writes to `runs/<date>-<app>-<scenario>/`:
 
 | File | Contents |
 |---|---|
-| `report.md` | Outcome, summary, stats, findings with screenshots, and the path the bot took |
+| `report.md` | Outcome, cost, summary, analysis, stats, findings with screenshots, and the path the bot took |
 | `steps.jsonl` | One line per action: screen, action, target, intent, result, screenshot |
-| `findings.jsonl` | One line per problem: severity, screen, title, details, screenshot |
-| `segments.jsonl` | One line per segment: status, summary, steps |
+| `findings.jsonl` | One line per problem: severity, screen, title, details, step, screenshot |
+| `segments.jsonl` | One line per segment: status, summary, steps, cost |
+| `status.json` | Live progress for the web UI (also copied to `runs/latest.json`) |
 | `run.json` | The resolved app config and scenario |
 | `screenshots/` | Screens after meaningful successes and at every suspicious moment |
+| `segment-<n>.jsonl`, `report-model.json` | Raw Claude Code output, for debugging |
 
 `runs/` is not committed.
 
 ## How it works
 
 ```
-/explore-app ──► explore-app skill (orchestrator, main session)
-                   │  build, install, launch through MobileBuildMCP
-                   │  runs the bot in segments of 20 steps
-                   ▼
-                 app-explorer agent (Haiku 4.5, effort low)
-                   │  snapshot_ui → act → snapshot_ui → judge → screenshot
-                   ▼
-                 MobileBuildMCP ──► xcodebuild / simctl / AXe ──► Simulator
+scripts/explore.py  (plain Python, no model)
+  │  xcodebuild ──► simctl install / launch
+  │
+  ├─► segment 1..n:  claude -p --agent app-explorer --json-schema
+  │                    app-explorer bot (Haiku 4.5, effort low)
+  │                      look ─► touch / type / swipe ─► judge ─► screenshot
+  │                      MobileBuildMCP ──► AXe ──► Simulator
+  │                    returns a JSON segment log through StructuredOutput
+  │
+  └─► report:        claude -p --model sonnet --json-schema
+                       summary + analysis of the whole run
 ```
 
-- **Orchestrator** (`.claude/skills/explore-app/SKILL.md`): builds the app,
-  launches each segment, and writes the report summary. The bookkeeping is in
-  scripts so the orchestrator makes as few calls as possible:
-  `scripts/prepare_run.py` (run folder, simulator, fresh install),
-  `scripts/record_segment.py` (reads the bot's reply, copies screenshots,
-  writes the logs, prints the next prompt), and `scripts/finish_run.py`
-  (writes `report.md`).
-- **Bot** (`.claude/agents/app-explorer.md`): the "user". It can only see and
-  touch the Simulator; it has no shell or file access. It replies with a JSON
-  segment log.
-- **Segments**: a fresh bot context every 20 steps keeps each step as fast as
-  the first and stops long runs from filling the context. Change
-  `SEGMENT_STEPS` in `scripts/record_segment.py` to adjust.
-- **Edits to the bot** reach it only in a new session: Claude Code loads agent
-  definitions when a session starts.
-- **MobileBuildMCP**: the hands and eyes. See below.
+The rule of thumb: what is deterministic is in the script; only judgment goes
+to a model.
+
+- **`scripts/explore.py`** runs everything that needs no judgment: the build,
+  a fresh install, each segment, recording steps and screenshots, stop
+  conditions, the report tables, and the live status. No model orchestrates.
+- **Bot** (`.claude/agents/app-explorer.md`): the "user", on Haiku. It can
+  only see and touch the Simulator; it has no shell or file access.
+- **Segments**: every segment is a fresh `claude -p` session that gets the goal
+  and a short summary of the earlier segments, so step 40 is as fast and cheap
+  as step 1. Segments have 20 steps; a tail under 5 steps joins the previous
+  segment (`SEGMENT_STEPS` and `MIN_SEGMENT_STEPS` in `explore.py`).
+- **Structured result**: the bot returns its segment log through the
+  `StructuredOutput` tool, which Claude Code checks against
+  `scripts/segment_schema.json`. If Haiku writes the JSON as text instead,
+  `explore.py` recovers it from the session and validates it against the same
+  schema; otherwise the segment is recorded as `stuck`.
+- **Report**: one Sonnet call at the end writes the summary and an analysis:
+  which findings matter, which look like the bot's own mistakes, and what to
+  check by hand.
+- **Taps**: the bot taps with a 0.15 s touch, and focuses a text field and
+  checks for the keyboard before typing. Short taps were often ignored, and
+  typing into an unfocused field is silently lost.
+
+### Cost
+
+On a Claude subscription the runs count against your usage; the report shows
+the equivalent API list price. Measured so far: onboarding about $0.09, a
+20-step autonomous run about $0.28. The bot is most of it.
 
 ### Bot effort
 
@@ -110,8 +140,8 @@ The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 ## MobileBuildMCP
 
 [MobileBuildMCP](https://github.com/getsentry/MobileBuildMCP) (formerly
-XcodeBuildMCP, by Sentry, MIT license) is a local MCP server that builds the
-app and drives the Simulator. It bundles [AXe](https://github.com/cameroncooke/AXe),
+XcodeBuildMCP, by Sentry, MIT license) is a local MCP server that drives the
+Simulator for the bot. It bundles [AXe](https://github.com/cameroncooke/AXe),
 which performs taps and reads the screen through accessibility, so there is no
 WebDriverAgent to build.
 
@@ -125,14 +155,20 @@ WebDriverAgent to build.
 - **Only two workflows** (`simulator`, `ui-automation`): no debugger, device,
   or Xcode IDE tools.
 
+`explore.py` writes the simulator to `.mobilebuildmcp/config.yaml` (not
+committed) before each run. It writes only the UDID: with a simulator name,
+MobileBuildMCP re-resolves the name and can pick the same model on an older
+runtime.
+
 Screens and screenshots the bot sees go to Claude as part of the conversation,
 like anything else in Claude Code. Use test data in the app.
 
 ### Which Xcode
 
-Builds use the Xcode selected by `xcode-select -p`. No Xcode agent integration
-is involved, so the Xcode 26.3 requirement on the MobileBuildMCP site does not
-apply here.
+`explore.py` builds with `xcodebuild`, using the Xcode selected by
+`xcode-select -p`, into `.build/DerivedData` (not committed). No Xcode agent
+integration is involved, so the Xcode 26.3 requirement on the MobileBuildMCP
+site does not apply here.
 
 ### Xcode MCP
 

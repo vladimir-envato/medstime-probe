@@ -1,24 +1,74 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "summary", "steps", "findings"],
+  "required": [
+    "status",
+    "summary",
+    "steps",
+    "findings"
+  ],
   "properties": {
-    "status": {"enum": ["goal_reached", "budget_used", "stuck", "crashed"]},
-    "summary": {"type": "string"},
+    "status": {
+      "enum": [
+        "goal_reached",
+        "budget_used",
+        "stuck",
+        "crashed"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
     "steps": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["screen", "action", "target", "intent", "result", "observation", "screenshot"],
+        "required": [
+          "screen",
+          "action",
+          "target",
+          "intent",
+          "result",
+          "observation",
+          "screenshot"
+        ],
         "properties": {
-          "screen": {"type": "string"},
-          "action": {"enum": ["tap", "type_text", "swipe", "long_press", "button", "key_press"]},
-          "target": {"type": "string"},
-          "intent": {"type": "string"},
-          "result": {"enum": ["success", "no_effect", "unexpected"]},
-          "observation": {"type": "string"},
-          "screenshot": {"type": ["string", "null"]}
+          "screen": {
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "tap",
+              "type_text",
+              "swipe",
+              "long_press",
+              "button",
+              "key_press"
+            ]
+          },
+          "target": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "success",
+              "no_effect",
+              "unexpected"
+            ]
+          },
+          "observation": {
+            "type": "string"
+          },
+          "screenshot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
@@ -27,13 +77,42 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["severity", "screen", "title", "details", "screenshot"],
+        "required": [
+          "severity",
+          "screen",
+          "title",
+          "details",
+          "step",
+          "screenshot"
+        ],
         "properties": {
-          "severity": {"enum": ["crash", "bug", "ux", "minor"]},
-          "screen": {"type": "string"},
-          "title": {"type": "string"},
-          "details": {"type": "string"},
-          "screenshot": {"type": ["string", "null"]}
+          "severity": {
+            "enum": [
+              "crash",
+              "bug",
+              "ux",
+              "minor"
+            ]
+          },
+          "screen": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "details": {
+            "type": "string"
+          },
+          "step": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "screenshot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     }

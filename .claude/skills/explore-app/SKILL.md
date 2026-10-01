@@ -1,51 +1,23 @@
 ---
 name: explore-app
-description: Run the app-explorer bot on an iOS app in the Simulator. Builds and launches the app, lets the Haiku bot use it in short segments toward a scenario goal, then writes a report with screenshots, findings, and stats under runs/. Use when the user runs /explore-app <app> <scenario>.
-argument-hint: <app> <scenario>
+description: Run the app-explorer bot on an iOS app in the Simulator through scripts/explore.py, then report the outcome. Use when the user runs /explore-app <app> <scenario> [steps] [goal].
+argument-hint: <app> <scenario> [steps] [goal]
 ---
 
 # Explore an app
 
-Arguments: `<app> <scenario>`, for example `medstime onboarding`.
+Arguments: `<app> <scenario>`, optionally a step count and a goal, for example
+`medstime onboarding` or `medstime autonomous 40 "Try to add and edit a medication"`.
 
-The scripts in `scripts/` do the bookkeeping. Keep your own calls to the ones
-below; do not read run files or screenshots yourself unless a script fails.
+`scripts/explore.py` does the whole run: build, bot segments, report. Do not
+drive the Simulator or the bot yourself.
 
-## 1. Prepare
-
-1. Run `python3 scripts/prepare_run.py <app> <scenario>`. It creates the run
-   folder, resolves the simulator, and for `freshStart` scenarios boots it and
-   uninstalls the app. If it fails, show its output and stop. Its JSON output
-   is the run: keep `runDir`.
-2. Call `mcp__mobilebuildmcp__session_set_defaults` with `projectPath`,
-   `scheme`, `configuration`, `bundleId`, and `simulatorId` from that output.
-3. Call `mcp__mobilebuildmcp__build_run_sim`, passing `launchArgs` if the run
-   has any. If the build fails, save the error to `<runDir>/build-error.txt`,
-   run `python3 scripts/finish_run.py <runDir> --build-failed <runDir>/build-error.txt`,
-   tell the user, and stop.
-4. Run `python3 scripts/record_segment.py <runDir> --first` to get the first
-   prompt.
-
-Use only the simulator the run names. Never erase it.
-
-## 2. Run the bot in segments
-
-Repeat:
-
-1. Launch the `app-explorer` agent (foreground) with the prompt after
-   `NEXT PROMPT:`, exactly as printed.
-2. Run `python3 scripts/record_segment.py <runDir> --agent-id <agentId>` with
-   the agent id from the launch result. It reads the bot's reply from its
-   transcript, records steps, findings, and screenshots, and prints either
-   `STOP` or the next prompt. If it cannot find the transcript, write the
-   bot's reply to `<runDir>/reply.json` and use `--reply-file` instead.
-3. On `STOP`, go to step 3. Otherwise repeat with the new prompt.
-
-## 3. Report
-
-Run `python3 scripts/finish_run.py <runDir> --summary "<3-5 sentences>"`. The
-summary says what the bot did, where it ended, and the most important
-problems; base it on the segment summaries the script printed.
-
-Finish by telling the user, in Serbian, the outcome line the script printed,
-the top findings, and the path to `report.md`.
+1. Run it in the background (it takes minutes):
+   `python3 scripts/explore.py <app> <scenario> [--steps <n>] [--goal "<goal>"]`.
+   If it exits at once with a missing app or scenario, list what exists under
+   `apps/` and stop.
+2. Tell the user the run started and that they can follow it live in the web UI
+   (`python3 scripts/server.py`, then http://127.0.0.1:8765).
+3. When it finishes, read the `report.md` path it printed and tell the user, in
+   Serbian: the outcome line, the top findings, what the analysis flags as
+   likely bot errors, and the report path.

@@ -4,10 +4,7 @@
     "allow": [
       "mcp__mobilebuildmcp",
       "Skill(explore-app)",
-      "Bash(python3 scripts/prepare_run.py:*)",
-      "Bash(python3 scripts/record_segment.py:*)",
-      "Bash(python3 scripts/finish_run.py:*)",
-      "Write(runs/**)"
+      "Bash(python3 scripts/explore.py:*)"
     ]
   }
 }

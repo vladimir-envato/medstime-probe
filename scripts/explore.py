@@ -29,10 +29,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
 SEGMENT_STEPS = 20
+MIN_SEGMENT_STEPS = 5
 SEVERITY = ["crash", "bug", "ux", "minor"]
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Use made-up medication names, never real ones. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -347,7 +348,15 @@ def build_prompt(run):
             f"Persona: {m['persona']}\n"
             f"App notes: {m['appNotes']}\n"
             f"Earlier segments: {earlier}\n"
-            f"Steps in this segment: {min(SEGMENT_STEPS, steps_left)}\n\n{RULES}")
+            f"Steps in this segment: {segment_budget(steps_left)}\n\n{RULES}")
+
+
+def segment_budget(steps_left):
+    """Steps for the next segment. A tail shorter than MIN_SEGMENT_STEPS joins
+    this segment, since every segment has a fixed startup cost."""
+    if steps_left - SEGMENT_STEPS < MIN_SEGMENT_STEPS:
+        return steps_left
+    return SEGMENT_STEPS
 
 
 def run_segment(run):
@@ -425,6 +434,7 @@ def matches(value, schema):
     if kind is not None and not any(
             (k == "object" and isinstance(value, dict)) or (k == "array" and isinstance(value, list))
             or (k == "string" and isinstance(value, str)) or (k == "null" and value is None)
+            or (k == "integer" and isinstance(value, int) and not isinstance(value, bool))
             for k in kinds):
         return False
     if isinstance(value, dict):
@@ -479,9 +489,12 @@ def record_segment(run, data, result):
     new_findings = []
     for finding in data["findings"]:
         source = finding.get("screenshot")
-        number = next((r["step"] for r, s in zip(new_steps, data["steps"])
-                       if source and s.get("screenshot") == source), len(run.steps) + len(new_steps))
-        record = {"segment": segment, "step": number, **finding}
+        local = finding.get("step")
+        if isinstance(local, int) and 1 <= local <= len(new_steps):
+            number = new_steps[local - 1]["step"]
+        else:
+            number = len(run.steps) + len(new_steps)
+        record = {**finding, "segment": segment, "step": number}
         record["screenshot"] = copy_shot(source, number, finding.get("title"))
         new_findings.append(record)
 
