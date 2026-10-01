@@ -1,0 +1,12 @@
+# Run output: reports, step logs, and screenshots
+runs/*
+!runs/.gitkeep
+
+# MobileBuildMCP local state
+.mobilebuildmcp/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# macOS
+.DS_Store
