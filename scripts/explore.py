@@ -1,0 +1,637 @@
+#!/usr/bin/env python3
+"""Run the app-explorer bot on an iOS app, without a model as orchestrator.
+
+Usage:
+  explore.py <app> <scenario> [--steps N] [--goal "..."]
+
+The script builds and installs the app, runs the bot in segments through
+`claude -p --agent app-explorer --json-schema`, records every segment, and at
+the end asks Sonnet once for the report summary and analysis.
+
+--steps overrides the scenario's maxSteps. --goal replaces the scenario's goal
+and turns it into an open-ended run (no "Done when").
+
+Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SCHEMA = ROOT / "scripts" / "segment_schema.json"
+DERIVED_DATA = ROOT / ".build" / "DerivedData"
+SEGMENT_STEPS = 20
+SEVERITY = ["crash", "bug", "ux", "minor"]
+MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
+
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Use made-up medication names, never real ones. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+
+REPORT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "analysis"],
+    "properties": {
+        "summary": {"type": "string"},
+        "analysis": {"type": "string"},
+    },
+}
+
+REPORT_PROMPT = """You review a run of an automated QA bot (Claude Haiku) that used an iOS app in the Simulator like a first-time user. Below are the run settings, the bot's segment summaries, its findings, and every step it took.
+
+Write, in English:
+- "summary": 3-5 sentences. What the bot did, where it ended, the most important problems.
+- "analysis": Markdown. Use ### for section headings, never # or ##. Short sections:
+  - "Findings that matter": merge duplicates; for each, say why it matters.
+  - "Likely bot errors": findings or no_effect steps that look like the bot's own mistake (for example tapping during an animation, misreading the screen) rather than an app problem. Say "None" if there are none.
+  - "Check first": the 1-3 things a developer should verify by hand.
+Base everything on the data; do not invent screens or behavior.
+
+{data}"""
+
+
+def claude_bin():
+    return shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+
+
+def now():
+    return datetime.now().astimezone()
+
+
+# ---------- config ----------
+
+def parse_front_matter(path):
+    text = path.read_text()
+    match = re.match(r"^---\n(.*?)\n---\n?(.*)$", text, re.S)
+    if not match:
+        return {}, text.strip()
+    meta = {}
+    for line in match.group(1).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        value = value.strip()
+        if not value:
+            continue
+        try:
+            meta[key.strip()] = json.loads(value)
+        except ValueError:
+            meta[key.strip()] = value
+    return meta, match.group(2).strip()
+
+
+def sections(body):
+    return {m.group(1).strip().lower(): m.group(2).strip()
+            for m in re.finditer(r"^## (.+?)\n(.*?)(?=^## |\Z)", body, re.S | re.M)}
+
+
+def resolve_udid(name):
+    out = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
+                         check=True, capture_output=True, text=True).stdout
+    best = None
+    for runtime, devices in json.loads(out)["devices"].items():
+        version = re.search(r"iOS-(\d+)-(\d+)", runtime)
+        if not version:
+            continue
+        key = (int(version.group(1)), int(version.group(2)))
+        for device in devices:
+            if device["name"] == name and (best is None or key > best[0]):
+                best = (key, device["udid"])
+    if best is None:
+        raise RuntimeError(f"No available simulator named {name!r}")
+    return best[1]
+
+
+# ---------- run state ----------
+
+class Run:
+    def __init__(self, args):
+        app_path = ROOT / "apps" / args.app / "app.md"
+        scenario_path = ROOT / "apps" / args.app / "scenarios" / f"{args.scenario}.md"
+        if not app_path.exists() or not scenario_path.exists():
+            raise SystemExit(f"Missing {app_path} or {scenario_path}")
+        config, app_notes = parse_front_matter(app_path)
+        meta, body = parse_front_matter(scenario_path)
+        parts = sections(body)
+
+        self.start = now()
+        self.dir = ROOT / "runs" / f"{self.start:%Y-%m-%d-%H%M%S}-{args.app}-{args.scenario}"
+        (self.dir / "screenshots").mkdir(parents=True)
+        self.meta = {
+            "app": args.app,
+            "scenario": args.scenario,
+            "appName": config.get("name", args.app),
+            "scenarioName": meta.get("name", args.scenario),
+            "start": self.start.isoformat(timespec="seconds"),
+            "maxSteps": int(args.steps or meta.get("maxSteps", 50)),
+            "freshStart": bool(meta.get("freshStart")),
+            "launchArgs": meta.get("launchArgs", []),
+            "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
+            "projectPath": config["projectPath"],
+            "scheme": config["scheme"],
+            "configuration": config.get("configuration", "Debug"),
+            "bundleId": config["bundleId"],
+            "goal": args.goal or parts.get("goal", ""),
+            "doneWhen": "no fixed end" if args.goal else parts.get("done when", "no fixed end"),
+            "persona": parts.get("persona", ""),
+            "appNotes": app_notes,
+        }
+        self.write_json("run.json", self.meta)
+        self.steps, self.findings, self.segments = [], [], []
+        self.cost = {}
+        self.live = None
+        self.lock = threading.Lock()
+        self.state = "preparing"
+        self.message = ""
+        self.update()
+
+    def write_json(self, name, data, base=None):
+        path = (base or self.dir) / name
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        tmp.replace(path)
+
+    def append_jsonl(self, name, records):
+        with (self.dir / name).open("a") as f:
+            for record in records:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def add_cost(self, result):
+        for model, usage in (result.get("modelUsage") or {}).items():
+            self.cost[model] = self.cost.get(model, 0) + usage.get("costUSD", 0)
+
+    def update(self, state=None, message=None):
+        with self.lock:
+            self._update(state, message)
+
+    def _update(self, state, message):
+        if state:
+            self.state = state
+        if message is not None:
+            self.message = message
+        counts = {s: sum(1 for f in self.findings if f.get("severity") == s) for s in SEVERITY}
+        status = {
+            "state": self.state,
+            "message": self.message,
+            "runDir": self.dir.name,
+            "app": self.meta["appName"],
+            "scenario": self.meta["scenarioName"],
+            "goal": self.meta["goal"],
+            "start": self.meta["start"],
+            "updated": now().isoformat(timespec="seconds"),
+            "pid": os.getpid(),
+            "steps": len(self.steps),
+            "maxSteps": self.meta["maxSteps"],
+            "segments": len(self.segments),
+            "findings": counts,
+            "costUSD": round(sum(self.cost.values()), 4),
+            "costByModel": {k: round(v, 4) for k, v in self.cost.items()},
+            "segmentSummaries": [s["summary"] for s in self.segments],
+            "recentSteps": self.steps[-12:],
+            "recentFindings": self.findings[-10:],
+            "live": self.live,
+        }
+        self.write_json("status.json", status)
+        self.write_json("latest.json", status, ROOT / "runs")
+
+
+# ---------- app ----------
+
+def write_mcp_config(run):
+    m = run.meta
+    path = ROOT / ".mobilebuildmcp" / "config.yaml"
+    path.parent.mkdir(exist_ok=True)
+    # simulatorId only: with a simulatorName, MobileBuildMCP re-resolves the
+    # name and can pick the same model on an older runtime.
+    path.write_text(
+        "schemaVersion: 1\n"
+        "sessionDefaults:\n"
+        f"  projectPath: {m['projectPath']}\n"
+        f"  scheme: {m['scheme']}\n"
+        f"  configuration: {m['configuration']}\n"
+        f"  simulatorId: {m['simulatorId']}\n"
+        f"  bundleId: {m['bundleId']}\n"
+        "  simulatorPlatform: iOS Simulator\n"
+    )
+
+
+def build_and_launch(run):
+    m = run.meta
+    udid = m["simulatorId"]
+    log = run.dir / "build.log"
+    subprocess.run(["xcrun", "simctl", "boot", udid], capture_output=True)
+    subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", udid], capture_output=True)
+
+    run.update("building", "Building the app")
+    with log.open("w") as f:
+        build = subprocess.run(
+            ["xcodebuild", "-project", m["projectPath"], "-scheme", m["scheme"],
+             "-configuration", m["configuration"], "-destination", f"id={udid}",
+             "-derivedDataPath", str(DERIVED_DATA), "build"],
+            stdout=f, stderr=subprocess.STDOUT,
+        )
+    if build.returncode != 0:
+        tail = log.read_text().splitlines()
+        errors = [line for line in tail if "error:" in line] or tail[-30:]
+        raise BuildFailed("\n".join(errors[-30:]))
+
+    products = DERIVED_DATA / "Build" / "Products" / f"{m['configuration']}-iphonesimulator"
+    app = None
+    for candidate in products.glob("*.app"):
+        bundle = subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier",
+                                 str(candidate / "Info.plist")], capture_output=True, text=True).stdout.strip()
+        if bundle == m["bundleId"]:
+            app = candidate
+    if app is None:
+        raise BuildFailed(f"No .app with bundle id {m['bundleId']} in {products}")
+
+    run.update("installing", "Installing and launching")
+    if m["freshStart"]:
+        subprocess.run(["xcrun", "simctl", "uninstall", udid, m["bundleId"]], capture_output=True)
+    subprocess.run(["xcrun", "simctl", "install", udid, str(app)], check=True, capture_output=True)
+    subprocess.run(["xcrun", "simctl", "launch", "--terminate-running-process", udid, m["bundleId"],
+                    *m["launchArgs"]], check=True, capture_output=True)
+
+
+class BuildFailed(Exception):
+    pass
+
+
+# ---------- segments ----------
+
+TOOL_NAMES = {"snapshot_ui": "look", "wait_for_ui": "wait", "tap": "tap", "touch": "tap", "batch": "tap (batch)",
+              "long_press": "long press", "swipe": "swipe", "type_text": "type", "button": "button",
+              "key_press": "key", "screenshot": "screenshot", "StructuredOutput": "report"}
+TARGET = re.compile(r"(e\d+)\|[^|]*\|([^|]*)\|([^|]*)\|")
+
+
+class Live:
+    """Turns a claude -p stream into live actions in status.json, and screenshots
+    the simulator every few seconds for the web UI."""
+
+    def __init__(self, run, segment):
+        self.run, self.segment = run, segment
+        self.labels = {}
+        self.done = threading.Event()
+        run.live = {"segment": segment, "toolCalls": 0, "actions": [],
+                    "screenshot": (run.live or {}).get("screenshot")}
+        run.update()
+        threading.Thread(target=self.capture, daemon=True).start()
+
+    def capture(self):
+        target, tmp = self.run.dir / "live.jpg", self.run.dir / "live.tmp.jpg"
+        while not self.done.wait(3):
+            shot = subprocess.run(["xcrun", "simctl", "io", self.run.meta["simulatorId"], "screenshot",
+                                   "--type=jpeg", str(tmp)], capture_output=True)
+            if shot.returncode == 0:
+                tmp.replace(target)
+                self.run.live["screenshot"] = f"live.jpg?t={int(datetime.now().timestamp())}"
+                self.run.update()
+
+    def stop(self):
+        self.done.set()
+
+    def handle(self, event):
+        message = event.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+            return
+        changed = False
+        for block in message["content"]:
+            if block.get("type") == "tool_use":
+                self.action(block)
+                changed = True
+            elif block.get("type") == "tool_result":
+                text = json.dumps(block.get("content"))
+                for ref, role, label in TARGET.findall(text):
+                    self.labels[ref] = label or role
+        if changed:
+            self.run.update()
+
+    def action(self, block):
+        name = block.get("name", "").removeprefix("mcp__mobilebuildmcp__")
+        args = block.get("input") or {}
+        ref = args.get("elementRef") or args.get("withinElementRef")
+        detail = self.labels.get(ref, ref or "")
+        if name == "type_text":
+            detail = f"{detail}: {args.get('text', '')}"
+        elif name == "swipe":
+            detail = f"{args.get('direction', '')} {detail}".strip()
+        elif name == "wait_for_ui":
+            detail = args.get("predicate", "")
+        elif name == "button":
+            detail = args.get("buttonType", "")
+        elif name == "batch":
+            detail = ", ".join(self.labels.get(s.get("elementRef"), s.get("elementRef", "")) for s in args.get("steps", []))
+        self.run.live["toolCalls"] += 1
+        self.run.live["actions"] = (self.run.live["actions"] + [{
+            "time": now().strftime("%H:%M:%S"), "tool": TOOL_NAMES.get(name, name), "detail": detail,
+        }])[-15:]
+
+
+
+def build_prompt(run):
+    m = run.meta
+    steps_left = m["maxSteps"] - len(run.steps)
+    earlier = " ".join(f"{s['segment']}) {s['summary']}" for s in run.segments) or \
+        "none, this is the first segment"
+    return (f"Goal: {m['goal']}\n"
+            f"Done when: {m['doneWhen']}\n"
+            f"Persona: {m['persona']}\n"
+            f"App notes: {m['appNotes']}\n"
+            f"Earlier segments: {earlier}\n"
+            f"Steps in this segment: {min(SEGMENT_STEPS, steps_left)}\n\n{RULES}")
+
+
+def run_segment(run):
+    number = len(run.segments) + 1
+    prompt = build_prompt(run)
+    (run.dir / f"segment-{number}-prompt.txt").write_text(prompt)
+    live = Live(run, number)
+    result = None
+    with (run.dir / f"segment-{number}.jsonl").open("w") as raw:
+        proc = subprocess.Popen(
+            [claude_bin(), "-p", "--agent", "app-explorer", "--json-schema", SCHEMA.read_text(),
+             "--output-format", "stream-json", "--verbose", prompt],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        for line in proc.stdout:
+            raw.write(line)
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if event.get("type") == "result":
+                result = event
+            else:
+                live.handle(event)
+        proc.wait()
+    live.stop()
+    if result is None:
+        result = {"is_error": True, "result": (run.dir / f"segment-{number}.jsonl").read_text()[-2000:]}
+    run.add_cost(result)
+    data = result.get("structured_output")
+    if data is None:
+        # Haiku sometimes writes the JSON as text instead of calling the tool.
+        for text in [str(result.get("result", ""))] + assistant_texts(result.get("session_id")):
+            data = json_from_text(text)
+            if data is not None:
+                break
+        result["parsedFromText"] = data is not None
+    return data, result
+
+
+def assistant_texts(session_id):
+    """Assistant text blocks of a claude -p session, newest first."""
+    if not session_id:
+        return []
+    texts = []
+    for path in (Path.home() / ".claude" / "projects").glob(f"*/{session_id}.jsonl"):
+        for line in path.read_text().splitlines():
+            try:
+                message = json.loads(line).get("message")
+            except ValueError:
+                continue
+            if isinstance(message, dict) and message.get("role") == "assistant" and isinstance(message.get("content"), list):
+                texts += [c["text"] for c in message["content"] if c.get("type") == "text"]
+    return texts[::-1]
+
+
+def json_from_text(text):
+    """Return the segment JSON embedded in text if it matches the schema, else None."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+    return data if matches(data, json.loads(SCHEMA.read_text())) else None
+
+
+def matches(value, schema):
+    """Check value against the small JSON Schema subset used in segment_schema.json."""
+    if "enum" in schema:
+        return value in schema["enum"]
+    kind = schema.get("type")
+    kinds = kind if isinstance(kind, list) else [kind]
+    if kind is not None and not any(
+            (k == "object" and isinstance(value, dict)) or (k == "array" and isinstance(value, list))
+            or (k == "string" and isinstance(value, str)) or (k == "null" and value is None)
+            for k in kinds):
+        return False
+    if isinstance(value, dict):
+        props = schema.get("properties", {})
+        if any(key not in value for key in schema.get("required", [])):
+            return False
+        if schema.get("additionalProperties") is False and any(key not in props for key in value):
+            return False
+        return all(matches(value[key], props[key]) for key in value if key in props)
+    if isinstance(value, list):
+        return all(matches(item, schema.get("items", {})) for item in value)
+    return True
+
+
+def slug(text):
+    return re.sub(r"[^a-z0-9]+", "-", (text or "screen").lower()).strip("-")[:40] or "screen"
+
+
+def record_segment(run, data, result):
+    segment = len(run.segments) + 1
+    if not data:
+        data = {
+            "status": "stuck",
+            "summary": "The bot did not return a structured result.",
+            "steps": [],
+            "findings": [{"severity": "bug", "screen": "(run)", "title": "Bot returned no structured result",
+                          "details": "```\n" + str(result.get("result", ""))[:2000] + "\n```",
+                          "screenshot": None}],
+        }
+
+    copied = {}
+
+    def copy_shot(source, number, label):
+        if not source:
+            return None
+        if source not in copied:
+            path = Path(source)
+            if not path.exists():
+                return None
+            name = f"{number:03d}-{slug(label)}{path.suffix or '.png'}"
+            shutil.copy(path, run.dir / "screenshots" / name)
+            copied[source] = f"screenshots/{name}"
+        return copied[source]
+
+    new_steps = []
+    for step in data["steps"]:
+        number = len(run.steps) + len(new_steps) + 1
+        record = {"segment": segment, "step": number, **step}
+        record["screenshot"] = copy_shot(step.get("screenshot"), number, step.get("screen"))
+        new_steps.append(record)
+
+    new_findings = []
+    for finding in data["findings"]:
+        source = finding.get("screenshot")
+        number = next((r["step"] for r, s in zip(new_steps, data["steps"])
+                       if source and s.get("screenshot") == source), len(run.steps) + len(new_steps))
+        record = {"segment": segment, "step": number, **finding}
+        record["screenshot"] = copy_shot(source, number, finding.get("title"))
+        new_findings.append(record)
+
+    entry = {"segment": segment, "status": data["status"], "summary": data["summary"],
+             "steps": len(new_steps), "costUSD": round(result.get("total_cost_usd") or 0, 4),
+             "parsedFromText": bool(result.get("parsedFromText"))}
+    run.steps += new_steps
+    run.findings += new_findings
+    run.segments.append(entry)
+    run.append_jsonl("steps.jsonl", new_steps)
+    run.append_jsonl("findings.jsonl", new_findings)
+    run.append_jsonl("segments.jsonl", [entry])
+    return data["status"]
+
+
+# ---------- report ----------
+
+def cell(value):
+    return str(value if value is not None else "-").replace("|", "\\|").replace("\n", " ")
+
+
+def ask_sonnet(run):
+    data = {
+        "run": {k: run.meta[k] for k in ("appName", "scenarioName", "goal", "doneWhen", "persona", "maxSteps")},
+        "segments": run.segments,
+        "findings": run.findings,
+        "steps": [{k: s.get(k) for k in ("step", "screen", "action", "target", "result", "observation")}
+                  for s in run.steps],
+    }
+    proc = subprocess.run(
+        [claude_bin(), "-p", "--model", "sonnet", "--tools", "", "--strict-mcp-config",
+         "--system-prompt", "You write concise, factual QA reports from run data.",
+         "--json-schema", json.dumps(REPORT_SCHEMA),
+         "--output-format", "json", REPORT_PROMPT.replace("{data}", json.dumps(data, ensure_ascii=False))],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    (run.dir / "report-model.json").write_text(proc.stdout or proc.stderr)
+    try:
+        result = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    run.add_cost(result)
+    return result.get("structured_output")
+
+
+def write_report(run, outcome, summary, analysis=None):
+    seconds = int((now() - run.start).total_seconds())
+    offset = run.start.strftime("%z")
+    date = f"{run.start.day}. {MONTHS[run.start.month - 1]} {run.start.year}, {run.start:%H:%M:%S} {offset[:3]}:{offset[3:]}"
+    results = {r: sum(1 for s in run.steps if s.get("result") == r) for r in ("success", "no_effect", "unexpected")}
+    screens = list(dict.fromkeys(s.get("screen") for s in run.steps if s.get("screen")))
+    counts = {s: sum(1 for f in run.findings if f.get("severity") == s) for s in SEVERITY}
+    shots = sorted((run.dir / "screenshots").glob("*"))
+    cost = sum(run.cost.values())
+    by_model = ", ".join(f"{k} ${v:.3f}" for k, v in run.cost.items())
+
+    lines = [
+        f"# {run.meta['appName']} - {run.meta['scenarioName']}", "",
+        f"**Outcome:** {outcome}",
+        f"**Date:** {date}",
+        f"**Duration:** {seconds // 60:02d}:{seconds % 60:02d}   **Steps:** {len(run.steps)} / "
+        f"{run.meta['maxSteps']}   **Segments:** {len(run.segments)}   **Cost:** ${cost:.3f}",
+        "", "## Summary", summary, "",
+    ]
+    if analysis:
+        lines += ["## Analysis", analysis, ""]
+    lines += [
+        "## Stats", "| Metric | Value |", "|---|---|",
+        f"| Steps | {len(run.steps)} |",
+        f"| Successful / no effect / unexpected | {results['success']} / {results['no_effect']} / {results['unexpected']} |",
+        f"| Screens visited | {len(screens)} ({', '.join(screens)}) |",
+        f"| Findings | crash {counts['crash']}, bug {counts['bug']}, ux {counts['ux']}, minor {counts['minor']} |",
+        f"| Screenshots | {len(shots)} |",
+        f"| Cost | ${cost:.3f} ({by_model}) |",
+        "", "## Findings",
+    ]
+    ordered = sorted(run.findings, key=lambda f: SEVERITY.index(f["severity"]) if f.get("severity") in SEVERITY else 99)
+    if not ordered:
+        lines.append("None.")
+    for f in ordered:
+        lines += ["", f"### {f.get('severity')}: {f.get('title')}",
+                  f"Screen: {f.get('screen')} · Step {f.get('step')}", "", f.get("details", "")]
+        if f.get("screenshot"):
+            lines += ["", f"![]({f['screenshot']})"]
+    lines += ["", "## Path", "| # | Screen | Action | Target | Result |", "|---|---|---|---|---|"]
+    for s in run.steps:
+        lines.append(f"| {s['step']} | {cell(s.get('screen'))} | {cell(s.get('action'))} | "
+                     f"{cell(s.get('target'))} | {cell(s.get('result'))} |")
+    if shots:
+        lines += ["", f"![]({shots[-1].relative_to(run.dir)})"]
+    (run.dir / "report.md").write_text("\n".join(lines) + "\n")
+
+
+# ---------- main ----------
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("app")
+    parser.add_argument("scenario")
+    parser.add_argument("--steps", type=int, help="override the scenario's maxSteps")
+    parser.add_argument("--goal", help="replace the scenario goal; makes the run open-ended")
+    args = parser.parse_args()
+
+    run = Run(args)
+    print(f"Run: {run.dir}", flush=True)
+    stopped = {"flag": False}
+
+    def stop(*_):
+        stopped["flag"] = True
+        run.update(message="Stopping after this segment")
+    signal.signal(signal.SIGTERM, stop)
+
+    try:
+        write_mcp_config(run)
+        build_and_launch(run)
+    except BuildFailed as error:
+        write_report(run, "build failed", "The build failed:\n\n```\n" + str(error) + "\n```")
+        run.update("failed", "Build failed")
+        print("Build failed. See", run.dir / "report.md")
+        sys.exit(1)
+
+    status = "stuck"
+    while len(run.steps) < run.meta["maxSteps"] and not stopped["flag"]:
+        run.update("running", f"Segment {len(run.segments) + 1}")
+        data, result = run_segment(run)
+        status = record_segment(run, data, result)
+        if run.live:
+            run.live["actions"] = []
+        run.update()
+        print(f"Segment {len(run.segments)}: {status}, {run.segments[-1]['steps']} steps, "
+              f"total {len(run.steps)}/{run.meta['maxSteps']}", flush=True)
+        if status in ("goal_reached", "stuck", "crashed"):
+            break
+        if run.segments[-1]["steps"] == 0:
+            status = "stuck"
+            break
+
+    outcome = {"goal_reached": "goal reached", "stuck": "stuck", "crashed": "crashed"}.get(status, "budget used")
+    if stopped["flag"] and status not in ("goal_reached", "stuck", "crashed"):
+        outcome = "stopped"
+    run.update("reporting", "Writing the report")
+    review = ask_sonnet(run)
+    if review:
+        write_report(run, outcome, review["summary"], review["analysis"])
+    else:
+        write_report(run, outcome, " ".join(s["summary"] for s in run.segments) or "No summary.")
+    run.update("done", outcome)
+    print(f"{outcome} · {len(run.steps)}/{run.meta['maxSteps']} steps · ${sum(run.cost.values()):.3f}")
+    print(run.dir / "report.md")
+
+
+if __name__ == "__main__":
+    main()

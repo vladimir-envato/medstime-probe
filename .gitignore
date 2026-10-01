@@ -10,3 +10,6 @@ runs/*
 
 # macOS
 .DS_Store
+
+# Build products from scripts/explore.py
+.build/
