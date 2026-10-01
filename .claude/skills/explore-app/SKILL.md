@@ -51,7 +51,14 @@ Repeat until a stop condition below:
    App notes: <the app config body>
    Earlier segments: <summaries of earlier segments, oldest first, or "none, this is the first segment">
    Steps in this segment: <min(10, steps left)>
+
+   Take a screenshot on each new screen and on the last screen. Your final
+   message (or hand-back message) must be only the JSON from your "Reply"
+   section, starting with { and ending with }, with screenshot paths filled in.
    ```
+
+   The reply rule is repeated here because agent definitions load when the
+   session starts, so edits to the bot only reach it in a new session.
 
 2. Parse the JSON reply. If it is not valid JSON, record the raw reply as a
    `bug` finding against the run itself and treat the segment as `stuck`.
