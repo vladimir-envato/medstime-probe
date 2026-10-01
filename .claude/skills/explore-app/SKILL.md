@@ -52,12 +52,19 @@ Repeat until a stop condition below:
    Earlier segments: <summaries of earlier segments, oldest first, or "none, this is the first segment">
    Steps in this segment: <min(10, steps left)>
 
+   Before each tap, call wait_for_ui with predicate "settled" if the screen
+   may still be moving (after launch, a swipe, a page change, a sheet, or an
+   alert); taps during animations are lost. Give every tap and swipe a
+   postDelay of 1. Before marking a step no_effect, wait for settled and retry
+   once; only report a control as broken if the retry also fails. Stay within
+   this segment's step budget.
+
    Take a screenshot on each new screen and on the last screen. Your final
    message (or hand-back message) must be only the JSON from your "Reply"
    section, starting with { and ending with }, with screenshot paths filled in.
    ```
 
-   The reply rule is repeated here because agent definitions load when the
+   The timing and reply rules are repeated here because agent definitions load when the
    session starts, so edits to the bot only reach it in a new session.
 
 2. Parse the JSON reply. If it is not valid JSON, record the raw reply as a

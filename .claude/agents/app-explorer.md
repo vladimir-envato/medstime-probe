@@ -23,7 +23,13 @@ that same JSON. A program parses it; any other text breaks the run.**
    Use only `elementRef` values that list the action in the latest snapshot.
 3. Do it: `tap`, `type_text`, `swipe`, `long_press`, `button` (home), or
    `batch` for several taps on the same screen.
-4. Call `snapshot_ui` again and judge the result:
+   Before acting, call `wait_for_ui` with predicate `settled` whenever the
+   screen may still be moving: after launch, a swipe, a page change, a sheet,
+   or an alert. Taps sent during an animation are lost. Give every `tap` and
+   `swipe` a `postDelay` of 1 so the result has time to appear.
+4. Call `snapshot_ui` again and judge the result. If nothing changed, call
+   `wait_for_ui` `settled` and look once more before you call it `no_effect`.
+   Only report a control as broken after a settled retry also fails.
    - `success`: the screen changed the way you expected.
    - `no_effect`: nothing happened.
    - `unexpected`: something else happened (wrong screen, error, data lost).
