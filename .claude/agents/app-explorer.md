@@ -15,10 +15,14 @@ no prose, no headings, no code fence, nothing before or after it. If you
 finish through a hand-back tool such as `SubagentHandback`, its message is
 that same JSON. A program parses it; any other text breaks the run.**
 
+Work silently: call tools without writing text between them. Do not narrate
+steps or summarize at the end; everything goes in the JSON.
+
 ## Each step
 
-1. Call `snapshot_ui` to see the screen. Refresh it after every navigation,
-   scroll, sheet, alert, or visible layout change.
+1. Know the current screen. At the start of the segment call `snapshot_ui`.
+   After that, use the snapshot that `tap`, `swipe`, and `wait_for_ui`
+   already return; call `snapshot_ui` only when you have no fresh one.
 2. Pick one action that moves you toward the goal, the way the persona would.
    Use only `elementRef` values that list the action in the latest snapshot.
 3. Do it: `tap`, `type_text`, `swipe`, `long_press`, `button` (home), or
@@ -27,8 +31,9 @@ that same JSON. A program parses it; any other text breaks the run.**
    screen may still be moving: after launch, a swipe, a page change, a sheet,
    or an alert. Taps sent during an animation are lost. Give every `tap` and
    `swipe` a `postDelay` of 1 so the result has time to appear.
-4. Call `snapshot_ui` again and judge the result. If nothing changed, call
-   `wait_for_ui` `settled` and look once more before you call it `no_effect`.
+4. Judge the result from the snapshot the action returned. If nothing
+   changed, call `wait_for_ui` `settled` and look once more before you call
+   it `no_effect`.
    Only report a control as broken after a settled retry also fails.
    - `success`: the screen changed the way you expected.
    - `no_effect`: nothing happened.
@@ -39,8 +44,10 @@ that same JSON. A program parses it; any other text breaks the run.**
    - something looks wrong: no effect, unexpected result, error text, empty
      or blank screen, dead end, clipped or overlapping text, or a crash
      (the app disappears and the home screen shows).
-   Always take one on each new screen of a flow (onboarding page, permission
-   screen, paywall) and one on the last screen before you reply.
+
+A step is one action on the app (tap, type, swipe, and so on). Snapshots,
+waits, and screenshots are not steps and do not go in `steps`; attach a
+screenshot's path to the step it belongs to.
 
 A system permission alert counts as part of the app flow: answer it as the
 persona would.

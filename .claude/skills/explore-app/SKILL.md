@@ -8,113 +8,44 @@ argument-hint: <app> <scenario>
 
 Arguments: `<app> <scenario>`, for example `medstime onboarding`.
 
-- App config: `apps/<app>/app.md`
-- Scenario: `apps/<app>/scenarios/<scenario>.md`
+The scripts in `scripts/` do the bookkeeping. Keep your own calls to the ones
+below; do not read run files or screenshots yourself unless a script fails.
 
-If either file is missing, list what exists under `apps/` and stop.
+## 1. Prepare
 
-## 1. Prepare the run
+1. Run `python3 scripts/prepare_run.py <app> <scenario>`. It creates the run
+   folder, resolves the simulator, and for `freshStart` scenarios boots it and
+   uninstalls the app. If it fails, show its output and stop. Its JSON output
+   is the run: keep `runDir`.
+2. Call `mcp__mobilebuildmcp__session_set_defaults` with `projectPath`,
+   `scheme`, `configuration`, `bundleId`, and `simulatorId` from that output.
+3. Call `mcp__mobilebuildmcp__build_run_sim`, passing `launchArgs` if the run
+   has any. If the build fails, save the error to `<runDir>/build-error.txt`,
+   run `python3 scripts/finish_run.py <runDir> --build-failed <runDir>/build-error.txt`,
+   tell the user, and stop.
+4. Run `python3 scripts/record_segment.py <runDir> --first` to get the first
+   prompt.
 
-1. Read the app config and the scenario.
-2. Create the run folder `runs/<YYYY-MM-DD-HHMMSS>-<app>-<scenario>/` with a
-   `screenshots/` subfolder. Note the start time.
-3. Resolve the simulator UDID. Use the config's `simulatorId` if it has one.
-   Otherwise run `xcrun simctl list devices available` and take the device
-   named `simulatorName` on the newest iOS runtime that has it; the same name
-   often exists on several runtimes.
-4. Call `mcp__mobilebuildmcp__session_set_defaults` with the config's
-   `projectPath`, `scheme`, `configuration`, and `bundleId`, plus
-   `simulatorId` set to that UDID.
-5. If the scenario has `freshStart: true`, boot the simulator with
-   `mcp__mobilebuildmcp__boot_sim` and uninstall the app so it starts with no
-   data and no granted permissions: `xcrun simctl uninstall <UDID> <bundleId>`.
-   A missing app is fine. Never erase the simulator.
-6. Call `mcp__mobilebuildmcp__build_run_sim`, adding the scenario's
-   `launchArgs` if it has any. If the build fails, write the build error to
-   `report.md` with outcome `build_failed` and stop.
-
-Use only one simulator, the one named in the config.
+Use only the simulator the run names. Never erase it.
 
 ## 2. Run the bot in segments
 
-Segments keep the bot's context small, so every step stays as fast as the
-first. Use 10 steps per segment.
+Repeat:
 
-Repeat until a stop condition below:
+1. Launch the `app-explorer` agent (foreground) with the prompt after
+   `NEXT PROMPT:`, exactly as printed.
+2. Run `python3 scripts/record_segment.py <runDir> --agent-id <agentId>` with
+   the agent id from the launch result. It reads the bot's reply from its
+   transcript, records steps, findings, and screenshots, and prints either
+   `STOP` or the next prompt. If it cannot find the transcript, write the
+   bot's reply to `<runDir>/reply.json` and use `--reply-file` instead.
+3. On `STOP`, go to step 3. Otherwise repeat with the new prompt.
 
-1. Launch the `app-explorer` agent (foreground) with this prompt:
+## 3. Report
 
-   ```
-   Goal: <scenario goal>
-   Done when: <scenario "Done when", or "no fixed end">
-   Persona: <scenario persona>
-   App notes: <the app config body>
-   Earlier segments: <summaries of earlier segments, oldest first, or "none, this is the first segment">
-   Steps in this segment: <min(10, steps left)>
+Run `python3 scripts/finish_run.py <runDir> --summary "<3-5 sentences>"`. The
+summary says what the bot did, where it ended, and the most important
+problems; base it on the segment summaries the script printed.
 
-   Before each tap, call wait_for_ui with predicate "settled" if the screen
-   may still be moving (after launch, a swipe, a page change, a sheet, or an
-   alert); taps during animations are lost. Give every tap and swipe a
-   postDelay of 1. Before marking a step no_effect, wait for settled and retry
-   once; only report a control as broken if the retry also fails. Stay within
-   this segment's step budget.
-
-   Take a screenshot on each new screen and on the last screen. Your final
-   message (or hand-back message) must be only the JSON from your "Reply"
-   section, starting with { and ending with }, with screenshot paths filled in.
-   ```
-
-   The timing and reply rules are repeated here because agent definitions load when the
-   session starts, so edits to the bot only reach it in a new session.
-
-2. Parse the JSON reply. If it is not valid JSON, record the raw reply as a
-   `bug` finding against the run itself and treat the segment as `stuck`.
-3. Copy each screenshot path in `steps` and `findings` into the run's
-   `screenshots/` folder, named `<step number, 3 digits>-<short-slug>.png`,
-   and point the record at the copy.
-4. Append each step as one JSON line to `steps.jsonl`, adding `segment` and a
-   running `step` number. Append each finding to `findings.jsonl` the same way.
-5. Keep the segment summary for the next prompt.
-
-Stop when:
-- status is `goal_reached`, `stuck`, or `crashed`, or
-- the scenario's `maxSteps` is used up.
-
-## 3. Write the report
-
-Write `report.md` in the run folder:
-
-```markdown
-# <app> - <scenario name>
-
-**Outcome:** goal reached | budget used | stuck | crashed | build failed
-**Date:** <start, e.g. 2. okt 2026, 14:05:12 +02:00>
-**Duration:** <mm:ss>   **Steps:** <n> / <maxSteps>   **Segments:** <n>
-
-## Summary
-<3-5 sentences: what the bot did, where it ended, the most important problems>
-
-## Stats
-| Metric | Value |
-|---|---|
-| Steps | n |
-| Successful / no effect / unexpected | a / b / c |
-| Screens visited | n (list) |
-| Findings | crash a, bug b, ux c, minor d |
-| Screenshots | n |
-
-## Findings
-### <severity>: <title>
-Screen: <screen> · Step <n>
-<details>
-![](screenshots/<file>.png)
-
-## Path
-| # | Screen | Action | Target | Result |
-|---|---|---|---|---|
-```
-
-List findings most severe first. Embed only screenshots that exist.
-
-Finish by telling the user, in Serbian, the outcome, the stats line, the top
-findings, and the path to `report.md`.
+Finish by telling the user, in Serbian, the outcome line the script printed,
+the top findings, and the path to `report.md`.

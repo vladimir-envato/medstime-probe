@@ -1,5 +1,5 @@
 ---
-name: Autonomous - Complete onboarding
+name: Complete onboarding
 freshStart: true
 maxSteps: 50
 ---

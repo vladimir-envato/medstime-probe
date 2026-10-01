@@ -28,6 +28,18 @@ Open Claude Code in this folder and run:
 The first time, Claude Code asks you to approve the `mobilebuildmcp` server
 from `.mcp.json`.
 
+Or run it from a terminal, without opening a session:
+
+```
+scripts/run.sh medstime onboarding
+```
+
+This starts a fresh, non-interactive session (`claude -p`) for the run. A fresh
+session is cheaper: the orchestrator does not carry an earlier conversation
+into every call. The script runs the orchestrator on Sonnet; the bot stays on
+Haiku. `.claude/settings.json` pre-approves the tools a run needs, so
+it never stops at a permission prompt.
+
 Each run writes to `runs/<date>-<app>-<scenario>/`:
 
 | File | Contents |
@@ -35,6 +47,8 @@ Each run writes to `runs/<date>-<app>-<scenario>/`:
 | `report.md` | Outcome, summary, stats, findings with screenshots, and the path the bot took |
 | `steps.jsonl` | One line per action: screen, action, target, intent, result, screenshot |
 | `findings.jsonl` | One line per problem: severity, screen, title, details, screenshot |
+| `segments.jsonl` | One line per segment: status, summary, steps |
+| `run.json` | The resolved app config and scenario |
 | `screenshots/` | Screens after meaningful successes and at every suspicious moment |
 
 `runs/` is not committed.
@@ -44,7 +58,7 @@ Each run writes to `runs/<date>-<app>-<scenario>/`:
 ```
 /explore-app ──► explore-app skill (orchestrator, main session)
                    │  build, install, launch through MobileBuildMCP
-                   │  runs the bot in segments of 10 steps
+                   │  runs the bot in segments of 20 steps
                    ▼
                  app-explorer agent (Haiku 4.5, effort low)
                    │  snapshot_ui → act → snapshot_ui → judge → screenshot
@@ -52,14 +66,21 @@ Each run writes to `runs/<date>-<app>-<scenario>/`:
                  MobileBuildMCP ──► xcodebuild / simctl / AXe ──► Simulator
 ```
 
-- **Orchestrator** (`.claude/skills/explore-app/SKILL.md`): prepares the app,
-  starts each segment with a summary of the earlier ones, copies screenshots,
-  and writes the report.
+- **Orchestrator** (`.claude/skills/explore-app/SKILL.md`): builds the app,
+  launches each segment, and writes the report summary. The bookkeeping is in
+  scripts so the orchestrator makes as few calls as possible:
+  `scripts/prepare_run.py` (run folder, simulator, fresh install),
+  `scripts/record_segment.py` (reads the bot's reply, copies screenshots,
+  writes the logs, prints the next prompt), and `scripts/finish_run.py`
+  (writes `report.md`).
 - **Bot** (`.claude/agents/app-explorer.md`): the "user". It can only see and
   touch the Simulator; it has no shell or file access. It replies with a JSON
   segment log.
-- **Segments**: a fresh bot context every 10 steps keeps each step as fast as
-  the first and stops long runs from filling the context.
+- **Segments**: a fresh bot context every 20 steps keeps each step as fast as
+  the first and stops long runs from filling the context. Change
+  `SEGMENT_STEPS` in `scripts/record_segment.py` to adjust.
+- **Edits to the bot** reach it only in a new session: Claude Code loads agent
+  definitions when a session starts.
 - **MobileBuildMCP**: the hands and eyes. See below.
 
 ### Bot effort

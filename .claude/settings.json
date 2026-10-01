@@ -3,12 +3,11 @@
   "permissions": {
     "allow": [
       "mcp__mobilebuildmcp",
-      "Bash(xcrun simctl uninstall:*)",
-      "Bash(xcrun simctl list:*)",
-      "Bash(mkdir -p runs/:*)",
-      "Bash(cp:*)",
-      "Write(runs/**)",
-      "Edit(runs/**)"
+      "Skill(explore-app)",
+      "Bash(python3 scripts/prepare_run.py:*)",
+      "Bash(python3 scripts/record_segment.py:*)",
+      "Bash(python3 scripts/finish_run.py:*)",
+      "Write(runs/**)"
     ]
   }
 }
