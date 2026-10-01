@@ -1,0 +1,14 @@
+{
+  "enabledMcpjsonServers": ["mobilebuildmcp"],
+  "permissions": {
+    "allow": [
+      "mcp__mobilebuildmcp",
+      "Bash(xcrun simctl uninstall:*)",
+      "Bash(xcrun simctl list:*)",
+      "Bash(mkdir -p runs/:*)",
+      "Bash(cp:*)",
+      "Write(runs/**)",
+      "Edit(runs/**)"
+    ]
+  }
+}
