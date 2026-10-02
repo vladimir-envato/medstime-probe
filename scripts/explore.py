@@ -36,7 +36,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall tap only Close, X, or Not now; never Continue, Subscribe, Buy, Start trial, Restore, or a plan. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall tap only Close, X, or Not now; never Continue, Subscribe, Buy, Start trial, Restore, or a plan. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -282,7 +282,7 @@ class BuildFailed(Exception):
 
 TOOL_NAMES = {"snapshot_ui": "look", "wait_for_ui": "wait", "tap": "tap", "touch": "tap", "batch": "tap (batch)",
               "long_press": "long press", "swipe": "swipe", "type_text": "type", "button": "button",
-              "key_press": "key", "screenshot": "screenshot", "StructuredOutput": "report"}
+              "key_press": "key", "screenshot": "screenshot", "launch_app_sim": "relaunch", "StructuredOutput": "report"}
 # Tools that act on the app; each call is one step.
 APP_ACTIONS = {"touch", "tap", "type_text", "swipe", "long_press", "button", "key_press"}
 TARGET = re.compile(r"(e\d+)\|[^|]*\|([^|]*)\|([^|]*)\|")

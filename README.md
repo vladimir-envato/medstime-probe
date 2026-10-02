@@ -114,6 +114,11 @@ to a model.
   one (the schema rejects a finding without it), and nothing else gets one.
 - **Paywalls**: the bot may only dismiss them; Continue, Subscribe, and the
   like start a purchase.
+- **Permissions**: the bot always allows notifications and skips alarms.
+- **Settings is off limits**: the bot never opens the iOS Settings app or
+  presses Home. If another app comes to the front anyway, it taps "◀ <app>"
+  in the status bar, or relaunches the app with `launch_app_sim` when the
+  snapshot does not list that link.
 
 ### Cost
 
