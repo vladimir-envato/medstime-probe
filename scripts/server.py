@@ -186,6 +186,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--effort", body["effort"]]
             if body.get("reportModel") in REPORT_MODELS:
                 cmd += ["--report-model", body["reportModel"]]
+            if body.get("narrate") is True:
+                cmd += ["--narrate"]
             if str(body.get("persona", "")).strip():
                 cmd += ["--persona", str(body["persona"]).strip()]
             if str(body.get("goal", "")).strip():

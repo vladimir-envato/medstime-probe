@@ -71,6 +71,12 @@
         <option value="gpt-6-sol">GPT-6 Sol</option>
       </select>
       <div class="hint">Izveštaj se uvek piše sa effort low.</div>
+      <label for="narrate">Komentari bota</label>
+      <select id="narrate">
+        <option value="">Isključeni (default)</option>
+        <option value="1">Uključeni</option>
+      </select>
+      <div class="hint">Bot pre svake akcije napiše rečenicu šta radi, vidi se u panelu Uživo. Sporije je.</div>
       <label for="personaPick">Persona</label>
       <select id="personaPick"></select>
       <textarea id="persona" rows="3"></textarea>
@@ -215,7 +221,7 @@ function renderStatus(data) {
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
   $("runTitle").textContent = `${st.app} · ${st.scenario}`;
   $("runSetup").textContent = [st.model && `Model: ${st.model.replace("claude-", "")}`,
-    st.effort && `Effort: ${st.effort}`, st.reportModel && `Izveštaj: ${st.reportModel.replace("claude-", "")}`, st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
+    st.effort && `Effort: ${st.effort}`, st.reportModel && `Izveštaj: ${st.reportModel.replace("claude-", "")}`, st.narrate && "Komentari: uključeni", st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
   $("message").textContent = st.message || "";
   // Recorded steps come from the bot's segment report; during a segment, add
   // the app actions seen live so the count moves with every tap.
@@ -333,7 +339,7 @@ document.addEventListener("click", e => {
 // While a run is in progress, from the UI or the terminal, the form shows
 // that run's settings and is locked; afterwards it gets back what was there.
 const FORM_IDS = ["app", "scenario", "steps", "stepsUp", "stepsDown", "model", "effort",
-                  "reportModel", "personaPick", "persona", "goal", "start"];
+                  "reportModel", "narrate", "personaPick", "persona", "goal", "start"];
 // Effort levels each model accepts; Haiku 4.5 and Sonnet 4.5 have none.
 const MODEL_EFFORTS = {
   "claude-haiku-4-5": [], "claude-sonnet-4-5": [], "claude-opus-4-5": ["low", "medium"],
@@ -363,6 +369,7 @@ function lockForm(st) {
   syncEffort();
   $("effort").value = st.effort === "low" ? "" : (st.effort || "");
   $("reportModel").value = st.reportModel || "claude-sonnet-5-5";
+  $("narrate").value = st.narrate ? "1" : "";
   const i = personas.findIndex(p => p.text === st.persona);
   $("personaPick").value = i >= 0 ? String(i) : "";
   $("persona").value = st.persona || currentScenario()?.persona || "";
@@ -408,6 +415,7 @@ $("start").onclick = async () => {
     await api("/api/start", {app: $("app").value, scenario: $("scenario").value,
                              steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").dataset.unsupported ? "" : $("effort").value,
                              reportModel: $("reportModel").value,
+                             narrate: $("narrate").value === "1",
                              persona: $("persona").value.trim() !== (currentScenario()?.persona || "").trim()
                                ? $("persona").value : "",
                              goal: $("goal").value});

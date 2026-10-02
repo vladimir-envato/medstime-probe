@@ -37,6 +37,9 @@ AGENT = ROOT / ".claude" / "agents" / "medstime-probe.md"
 REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
 CODEX_APP_BIN = Path("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
 # Codex has no StructuredOutput tool; --output-schema makes the final message the result.
+# --narrate: the bot announces each action in one sentence, shown in the live feed.
+NARRATE_NOTE = ("Narration is on for this run, overriding \"Work silently\": before each tool call, "
+                "write one short sentence saying what you are about to do and why.")
 CODEX_NOTE = ("There is no StructuredOutput tool here: wherever these instructions say to call it, "
               "make your final message the JSON result itself, with nothing else around it.")
 SEGMENT_STEPS = 10
@@ -47,7 +50,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet (it is the local StoreKit test environment, \"Environment: Xcode\", so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet (it is the local StoreKit test environment, \"Environment: Xcode\", so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -192,6 +195,7 @@ class Run:
             "model": args.model,
             "effort": args.effort,
             "reportModel": args.report_model,
+            "narrate": args.narrate,
             "freshStart": bool(meta.get("freshStart")),
             "launchArgs": meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
@@ -256,6 +260,7 @@ class Run:
             "model": self.meta["model"] or "haiku",
             "effort": self.meta["effort"] or "low",
             "reportModel": self.meta["reportModel"],
+            "narrate": self.meta["narrate"],
             "persona": self.meta["persona"],
             "appId": self.meta["app"],
             "scenarioId": self.meta["scenario"],
@@ -367,6 +372,8 @@ class Live:
         item = event.get("item") or {}
         if event.get("type") == "turn.completed":
             self.run.live["tokens"] = codex_usage(event.get("usage") or {})
+        elif item.get("type") == "agent_message" and event.get("type") == "item.completed":
+            self.note(item.get("text", ""))
         elif item.get("type") != "mcp_tool_call":
             return
         elif event.get("type") == "item.started":
@@ -397,12 +404,24 @@ class Live:
             if block.get("type") == "tool_use":
                 self.action(block)
                 changed = True
+            elif block.get("type") == "text" and event.get("type") == "assistant":
+                self.note(block.get("text", ""))
+                changed = True
             elif block.get("type") == "tool_result":
                 text = json.dumps(block.get("content"))
                 for ref, role, label in TARGET.findall(text):
                     self.labels[ref] = label or role
         if changed:
             self.run.update()
+
+    def note(self, text):
+        """Adds the bot's narration (only written with --narrate) to the live feed."""
+        text = text.strip()
+        if not text or text.startswith("{"):
+            return
+        self.run.live["actions"] = (self.run.live["actions"] + [{
+            "time": now().strftime("%H:%M:%S"), "tool": "komentar", "detail": text[:200],
+        }])[-15:]
 
     def action(self, block):
         name = block.get("name", "").removeprefix("mcp__mobilebuildmcp__")
@@ -438,7 +457,8 @@ def build_prompt(run):
             f"Persona: {m['persona']}\n"
             f"App notes: {m['appNotes']}\n"
             f"Earlier segments: {earlier}\n"
-            f"Steps in this segment: {segment_budget(steps_left)}\n\n{RULES}")
+            f"Steps in this segment: {segment_budget(steps_left)}\n\n{RULES}"
+            + (f"\n\n{NARRATE_NOTE}" if m["narrate"] else ""))
 
 
 def segment_budget(steps_left):
@@ -785,6 +805,8 @@ def main():
     parser.add_argument("--effort", choices=EFFORTS, help="override the agent's effort level (low)")
     parser.add_argument("--report-model", choices=REPORT_MODELS, default=REPORT_MODELS[0],
                         help="model that writes the report summary and analysis, at low effort")
+    parser.add_argument("--narrate", action="store_true",
+                        help="let the bot announce each action in one sentence (slower; off by default)")
     args = parser.parse_args()
 
     run = Run(args)

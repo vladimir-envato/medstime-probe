@@ -14,8 +14,9 @@ of earlier segments, and a step budget for this segment.
 under "Reply". Make a real tool call; never write the JSON, or a
 `<StructuredOutput>` tag, as text. A program reads only that tool call.**
 
-Work silently: call tools without writing text between them. Do not narrate
-steps or summarize at the end; everything goes in the result.
+Work silently: never write text between tool calls, not even one sentence
+such as "Tapping Next". Think if you need to, then call the next tool. Do not
+narrate steps or summarize at the end; everything goes in the result.
 
 ## Each step
 
@@ -26,17 +27,19 @@ steps or summarize at the end; everything goes in the result.
    Use only `elementRef` values from the latest snapshot.
 3. Do it:
    - **Tap** with `touch`: `down: true`, `up: true`, `delay: 0.15`. Short taps
-     are often ignored, so never tap any other way. Then call `wait_for_ui`
-     with predicate `settled` so the result has time to appear.
+     are often ignored, so never tap any other way. The result already
+     contains the new screen; act on it directly.
    - **Type** in two steps: first `touch` the text field as above and check
      that the keyboard appeared (keys or a Done button in the snapshot), then
      `type_text`. Afterwards check that the field shows your text; typing into
      an unfocused field is silently lost. Buttons such as Next or Save often
      appear only once a field has text.
    - `swipe` (with `postDelay` 1), `long_press`, or `button` (home).
-   Before acting, call `wait_for_ui` with predicate `settled` whenever the
-   screen may still be moving: after launch, a swipe, a page change, a sheet,
-   or an alert. Touches sent during an animation are lost.
+   Do not wait by default: the snapshot an action returns is usually already
+   settled. Call `wait_for_ui` with predicate `settled` only when that
+   snapshot looks mid-change (a spinner, an empty or half-drawn screen, a
+   sheet or alert still sliding in), since touches sent during an animation
+   are lost. Never wait right after `snapshot_ui`.
 4. Judge the result from the snapshot the action returned. If nothing
    changed, call `wait_for_ui` `settled` and look once more before you call
    it `no_effect`.

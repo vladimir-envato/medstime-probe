@@ -124,6 +124,10 @@ to a model.
 - **Report**: one call to the report model at the end writes the summary and an analysis:
   which findings matter, which look like the bot's own mistakes, and what to
   check by hand.
+- **Waiting**: the bot acts on the screen each tap or swipe returns and calls
+  `wait_for_ui` only when that screen still looks mid-animation. Waiting
+  after every action doubled the model turns per step and, in measured runs,
+  always returned the same screen.
 - **Taps**: the bot taps with a 0.15 s touch, and focuses a text field and
   checks for the keyboard before typing. Short taps were often ignored, and
   typing into an unfocused field is silently lost.
