@@ -152,7 +152,7 @@
         <option value="xhigh">xhigh</option>
         <option value="max">max</option>
       </select>
-      <div class="hint">Viši effort = više razmišljanja i veća potrošnja. Haiku 4.5 i Sonnet 4.5 ne podržavaju effort.</div>
+      <div class="hint" id="effortHint"></div>
       <label for="personaPick">Persona</label>
       <select id="personaPick"></select>
       <textarea id="persona" rows="3"></textarea>
@@ -400,6 +400,21 @@ document.addEventListener("click", e => {
 // that run's settings and is locked; afterwards it gets back what was there.
 const FORM_IDS = ["app", "scenario", "steps", "stepsUp", "stepsDown", "model", "effort",
                   "personaPick", "persona", "goal", "start"];
+// Effort levels each model accepts; Haiku 4.5 and Sonnet 4.5 have none.
+const MODEL_EFFORTS = {
+  "claude-haiku-4-5": [], "claude-sonnet-4-5": [], "claude-opus-4-5": ["low", "medium", "high"],
+};
+const ALL_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+function syncEffort() {
+  const allowed = MODEL_EFFORTS[$("model").value] ?? ALL_EFFORTS;
+  [...$("effort").options].forEach(o => { o.hidden = o.disabled = o.value !== "" && !allowed.includes(o.value); });
+  if ($("effort").selectedOptions[0]?.disabled) $("effort").value = "";
+  $("effort").dataset.unsupported = allowed.length ? "" : "1";
+  if (!savedForm) $("effort").disabled = !allowed.length;
+  $("effortHint").textContent = allowed.length
+    ? "Viši effort = više razmišljanja i veća potrošnja."
+    : "Ovaj model ne podržava effort; bot radi sa podrazumevanim razmišljanjem.";
+}
 const MODEL_ALIASES = {haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5"};
 let savedForm = null;
 
@@ -411,6 +426,7 @@ function lockForm(st) {
   if (scenarioId) { $("scenario").value = scenarioId; syncSteps(); }
   $("steps").value = st.maxSteps;
   $("model").value = MODEL_ALIASES[st.model] || st.model || "claude-haiku-4-5";
+  syncEffort();
   $("effort").value = st.effort === "low" ? "" : (st.effort || "");
   const i = personas.findIndex(p => p.text === st.persona);
   $("personaPick").value = i >= 0 ? String(i) : "";
@@ -426,6 +442,7 @@ function unlockForm() {
   $("app").value = saved.app; fillScenarios();
   FORM_IDS.forEach(id => { $(id).disabled = false; if (id !== "app") $(id).value = saved[id]; });
   $("scenarioGoal").textContent = currentScenario()?.goal || "";
+  syncEffort();
 }
 
 async function poll() {
@@ -449,11 +466,12 @@ $("steps").onchange = () => {
 $("app").onchange = fillScenarios;
 $("scenario").onchange = syncSteps;
 $("personaPick").onchange = syncPersona;
+$("model").onchange = syncEffort;
 $("start").onclick = async () => {
   $("error").textContent = "";
   try {
     await api("/api/start", {app: $("app").value, scenario: $("scenario").value,
-                             steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").value,
+                             steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").dataset.unsupported ? "" : $("effort").value,
                              persona: $("persona").value.trim() !== (currentScenario()?.persona || "").trim()
                                ? $("persona").value : "",
                              goal: $("goal").value});
@@ -465,6 +483,7 @@ $("stop").onclick = async () => {
   try { await api("/api/stop", {}); } catch (e) { $("error").textContent = e.message; }
 };
 
+syncEffort();
 loadOptions().then(loadRuns).then(poll);
 setInterval(poll, 2000);
 </script>
