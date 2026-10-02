@@ -53,6 +53,7 @@
            cursor: pointer; background: var(--panel); color: var(--text); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .45; cursor: default; }
+  select:disabled, input:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
   .error { color: var(--bad); font-size: 13px; margin-top: 8px; min-height: 1em; }
   .status-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent); }
@@ -105,7 +106,7 @@
 <body>
 <header>
   <h1>App Explorer</h1>
-  <span class="sub">Haiku bot u iOS simulatoru</span>
+  <span class="sub">Bot u iOS simulatoru</span>
 </header>
 <main>
   <div class="stack">
@@ -122,9 +123,44 @@
         <button type="button" id="stepsUp" aria-label="Više koraka">+</button>
       </div>
       <div class="hint">Dugmad menjaju za 5.</div>
+      <label for="model">Model</label>
+      <select id="model">
+        <optgroup label="Haiku">
+          <option value="claude-haiku-4-5">Haiku 4.5 (podrazumevano, najjeftiniji)</option>
+        </optgroup>
+        <optgroup label="Sonnet">
+          <option value="claude-sonnet-5-5">Sonnet 5.5</option>
+          <option value="claude-sonnet-5">Sonnet 5</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+          <option value="claude-sonnet-4-5">Sonnet 4.5</option>
+        </optgroup>
+        <optgroup label="Opus">
+          <option value="claude-opus-5-5">Opus 5.5</option>
+          <option value="claude-opus-5">Opus 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
+          <option value="claude-opus-4-7">Opus 4.7</option>
+          <option value="claude-opus-4-6">Opus 4.6</option>
+          <option value="claude-opus-4-5">Opus 4.5</option>
+        </optgroup>
+      </select>
+      <label for="effort">Effort</label>
+      <select id="effort">
+        <option value="">Podrazumevano (low)</option>
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+        <option value="xhigh">xhigh</option>
+        <option value="max">max</option>
+      </select>
+      <div class="hint">Viši effort = više razmišljanja i veća potrošnja. Haiku 4.5 i Sonnet 4.5 ne podržavaju effort.</div>
+      <label for="personaPick">Persona</label>
+      <select id="personaPick"></select>
+      <textarea id="persona" rows="3"></textarea>
+      <label>Cilj scenarija</label>
+      <div class="hint" id="scenarioGoal" style="white-space: pre-wrap; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;"></div>
       <label for="goal">Prompt (opciono)</label>
-      <textarea id="goal" placeholder="Npr. Istraži podešavanja i probaj da dodaš lek."></textarea>
-      <div class="hint">Ako upišeš prompt, on zamenjuje cilj scenarija i run nema fiksan kraj: bot istražuje dok ne potroši korake.</div>
+      <textarea id="goal" rows="4" placeholder="Prazno = bot radi po cilju scenarija."></textarea>
+      <div class="hint">Ako upišeš prompt, on zamenjuje cilj scenarija za ovaj run, i run nema fiksan kraj: bot istražuje dok ne potroši korake.</div>
       <div class="buttons">
         <button id="start" class="primary">Start</button>
         <button id="stop">Stop</button>
@@ -144,6 +180,7 @@
         <span class="title" id="runTitle">Nema aktivnog runa</span>
         <span class="muted" id="message"></span>
       </div>
+      <div class="muted" id="runSetup"></div>
       <div class="bar"><div id="progress"></div></div>
       <div class="muted" id="progressText"></div>
       <div class="stats">
@@ -192,7 +229,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let options = [], lastRunDir = null, lastState = null, viewing = null;
+let options = [], personas = [], lastRunDir = null, lastState = null, viewing = null;
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const STATES = {preparing: "Priprema", building: "Build", installing: "Instalacija", running: "Radi",
@@ -212,13 +249,28 @@ function fillScenarios() {
     `<option value="${esc(s.id)}" data-steps="${s.maxSteps}">${esc(s.name)}</option>`).join("");
   syncSteps();
 }
+function currentScenario() {
+  const app = options.find(a => a.id === $("app").value);
+  return app?.scenarios.find(s => s.id === $("scenario").value);
+}
 function syncSteps() {
   const opt = $("scenario").selectedOptions[0];
   if (opt) $("steps").value = opt.dataset.steps;
+  $("scenarioGoal").textContent = currentScenario()?.goal || "";
+  $("personaPick").value = "";
+  syncPersona();
+}
+function syncPersona() {
+  const i = $("personaPick").value;
+  $("persona").value = i === "" ? (currentScenario()?.persona || "") : personas[i].text;
 }
 
 async function loadOptions() {
-  options = (await api("/api/options")).apps;
+  const data = await api("/api/options");
+  options = data.apps;
+  personas = data.personas || [];
+  $("personaPick").innerHTML = `<option value="">Persona scenarija (podrazumevano)</option>` +
+    personas.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
   $("app").innerHTML = options.map(a => `<option value="${esc(a.id)}">${esc(a.id)}</option>`).join("");
   fillScenarios();
 }
@@ -237,6 +289,8 @@ function renderStatus(data) {
   $("state").textContent = STATES[st.state] || st.state;
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
   $("runTitle").textContent = `${st.app} · ${st.scenario}`;
+  $("runSetup").textContent = [st.model && `Model: ${st.model.replace("claude-", "")}`,
+    st.effort && `Effort: ${st.effort}`, st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
   $("message").textContent = st.message || "";
   // Recorded steps come from the bot's segment report; during a segment, add
   // the app actions seen live so the count moves with every tap.
@@ -321,7 +375,7 @@ async function loadRuns() {
     const f = r.findings || {};
     const n = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
     return `<a href="#" data-run="${esc(r.runDir)}"><div class="rt">${esc(r.app)} · ${esc(r.scenario)}</div>
-      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${r.steps}/${r.maxSteps} koraka · ${n} nalaza · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokena" : ""}</div></a>`;
+      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${esc((r.model || "haiku").replace("claude-", ""))}${r.effort ? " · " + esc(r.effort) : ""} · ${r.steps}/${r.maxSteps} koraka · ${n} nalaza · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokena" : ""}</div></a>`;
   }).join("") || `<div class="empty">Nema runova.</div>`;
   $("runs").querySelectorAll("a").forEach(a => a.onclick = e => {
     e.preventDefault(); showReport(a.dataset.run);
@@ -342,8 +396,44 @@ document.addEventListener("click", e => {
   setTimeout(() => box.classList.remove("flash"), 1600);
 });
 
+// While a run is in progress, from the UI or the terminal, the form shows
+// that run's settings and is locked; afterwards it gets back what was there.
+const FORM_IDS = ["app", "scenario", "steps", "stepsUp", "stepsDown", "model", "effort",
+                  "personaPick", "persona", "goal", "start"];
+const MODEL_ALIASES = {haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5"};
+let savedForm = null;
+
+function lockForm(st) {
+  if (!savedForm) savedForm = Object.fromEntries(FORM_IDS.map(id => [id, $(id).value]));
+  if (st.appId) { $("app").value = st.appId; fillScenarios(); }
+  const scenarioId = st.scenarioId ||
+    options.find(a => a.id === $("app").value)?.scenarios.find(s => s.name === st.scenario)?.id;
+  if (scenarioId) { $("scenario").value = scenarioId; syncSteps(); }
+  $("steps").value = st.maxSteps;
+  $("model").value = MODEL_ALIASES[st.model] || st.model || "claude-haiku-4-5";
+  $("effort").value = st.effort === "low" ? "" : (st.effort || "");
+  const i = personas.findIndex(p => p.text === st.persona);
+  $("personaPick").value = i >= 0 ? String(i) : "";
+  $("persona").value = st.persona || currentScenario()?.persona || "";
+  $("goal").value = st.customGoal ? st.goal : "";
+  FORM_IDS.forEach(id => $(id).disabled = true);
+}
+
+function unlockForm() {
+  if (!savedForm) return;
+  const saved = savedForm;
+  savedForm = null;
+  $("app").value = saved.app; fillScenarios();
+  FORM_IDS.forEach(id => { $(id).disabled = false; if (id !== "app") $(id).value = saved[id]; });
+  $("scenarioGoal").textContent = currentScenario()?.goal || "";
+}
+
 async function poll() {
-  try { renderStatus(await api("/api/status")); } catch (e) { /* server restarting */ }
+  try {
+    const data = await api("/api/status");
+    if (data.running && data.status) lockForm(data.status); else unlockForm();
+    renderStatus(data);
+  } catch (e) { /* server restarting */ }
 }
 
 function bumpSteps(delta) {
@@ -358,11 +448,15 @@ $("steps").onchange = () => {
 };
 $("app").onchange = fillScenarios;
 $("scenario").onchange = syncSteps;
+$("personaPick").onchange = syncPersona;
 $("start").onclick = async () => {
   $("error").textContent = "";
   try {
     await api("/api/start", {app: $("app").value, scenario: $("scenario").value,
-                             steps: Number($("steps").value) || null, goal: $("goal").value});
+                             steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").value,
+                             persona: $("persona").value.trim() !== (currentScenario()?.persona || "").trim()
+                               ? $("persona").value : "",
+                             goal: $("goal").value});
     $("reportPanel").hidden = true;
     setTimeout(poll, 500);
   } catch (e) { $("error").textContent = e.message; }

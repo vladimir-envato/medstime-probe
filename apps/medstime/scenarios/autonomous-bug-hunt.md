@@ -1,5 +1,5 @@
 ---
-name: Autonomous - Random actions, hunt for bugs
+name: Autonomous - Bug hunt
 freshStart: true
 maxSteps: 60
 ---

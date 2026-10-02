@@ -23,6 +23,11 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
 WEB = ROOT / "web"
 NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+MODELS = ("claude-haiku-4-5",
+          "claude-sonnet-5-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4-5",
+          "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+          "claude-opus-4-5")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 current = {"proc": None, "log": None}
 
@@ -37,10 +42,27 @@ def scenarios():
             text = path.read_text()
             name = re.search(r"^name:\s*(.+)$", text, re.M)
             steps = re.search(r"^maxSteps:\s*(\d+)$", text, re.M)
+            goal = section(text, "Goal")
+            persona = section(text, "Persona")
             items.append({"id": path.stem, "name": name.group(1).strip() if name else path.stem,
-                          "maxSteps": int(steps.group(1)) if steps else 50})
+                          "maxSteps": int(steps.group(1)) if steps else 50,
+                          "goal": goal, "persona": persona})
         apps.append({"id": app_dir.name, "scenarios": items})
     return apps
+
+
+def section(text, heading):
+    match = re.search(rf"^## {heading}\s*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return match.group(1).strip() if match else ""
+
+
+def personas():
+    path = ROOT / "personas.md"
+    if not path.exists():
+        return []
+    parts = re.split(r"^## (.+)$", path.read_text(), flags=re.M)
+    return [{"name": name.strip(), "text": " ".join(body.split())}
+            for name, body in zip(parts[1::2], parts[2::2])]
 
 
 def running():
@@ -72,7 +94,7 @@ def runs_list():
         if status:
             out.append({k: status.get(k) for k in
                         ("runDir", "app", "scenario", "state", "message", "start", "steps", "maxSteps",
-                         "findings", "costUSD", "tokens")})
+                         "findings", "costUSD", "tokens", "model", "effort")})
     return out[:50]
 
 
@@ -102,7 +124,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return self.file(WEB / "index.html")
         if path == "/api/options":
-            return self.send(200, {"apps": scenarios()})
+            return self.send(200, {"apps": scenarios(), "personas": personas()})
         if path == "/api/status":
             status = read_json(RUNS / "latest.json")
             return self.send(200, {"running": running(), "status": status})
@@ -130,6 +152,12 @@ class Handler(BaseHTTPRequestHandler):
             cmd = [sys.executable, str(ROOT / "scripts" / "explore.py"), app, scenario]
             if body.get("steps"):
                 cmd += ["--steps", str(max(1, min(500, int(body["steps"]))))]
+            if body.get("model") in MODELS and body["model"] != "claude-haiku-4-5":
+                cmd += ["--model", body["model"]]
+            if body.get("effort") in EFFORTS:
+                cmd += ["--effort", body["effort"]]
+            if str(body.get("persona", "")).strip():
+                cmd += ["--persona", str(body["persona"]).strip()]
             if str(body.get("goal", "")).strip():
                 cmd += ["--goal", str(body["goal"]).strip()]
             RUNS.mkdir(exist_ok=True)

@@ -2,14 +2,16 @@
 """Run the app-explorer bot on an iOS app, without a model as orchestrator.
 
 Usage:
-  explore.py <app> <scenario> [--steps N] [--goal "..."]
+  explore.py <app> <scenario> [--steps N] [--goal "..."] [--persona "..."] [--model M] [--effort E]
 
 The script builds and installs the app, runs the bot in segments through
 `claude -p --agent app-explorer --json-schema`, records every segment, and at
 the end asks Sonnet once for the report summary and analysis.
 
 --steps overrides the scenario's maxSteps. --goal replaces the scenario's goal
-and turns it into an open-ended run (no "Done when").
+and turns it into an open-ended run (no "Done when"). --persona replaces the scenario's persona. --model runs the bot on
+another model (for example sonnet) instead of the agent's default, Haiku.
+--effort overrides the agent's effort level (low by default).
 
 Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
 """
@@ -28,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SEGMENT_STEPS = 10
 MIN_SEGMENT_STEPS = 3
 SEVERITY = ["crash", "bug", "ux", "minor"]
@@ -136,6 +139,8 @@ class Run:
             "scenarioName": meta.get("name", args.scenario),
             "start": self.start.isoformat(timespec="seconds"),
             "maxSteps": int(args.steps or meta.get("maxSteps", 50)),
+            "model": args.model,
+            "effort": args.effort,
             "freshStart": bool(meta.get("freshStart")),
             "launchArgs": meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
@@ -144,8 +149,9 @@ class Run:
             "configuration": config.get("configuration", "Debug"),
             "bundleId": config["bundleId"],
             "goal": args.goal or parts.get("goal", ""),
+            "customGoal": bool(args.goal),
             "doneWhen": "no fixed end" if args.goal else parts.get("done when", "no fixed end"),
-            "persona": parts.get("persona", ""),
+            "persona": args.persona or parts.get("persona", ""),
             "appNotes": app_notes,
         }
         self.write_json("run.json", self.meta)
@@ -196,6 +202,12 @@ class Run:
             "app": self.meta["appName"],
             "scenario": self.meta["scenarioName"],
             "goal": self.meta["goal"],
+            "model": self.meta["model"] or "haiku",
+            "effort": self.meta["effort"] or "low",
+            "persona": self.meta["persona"],
+            "appId": self.meta["app"],
+            "scenarioId": self.meta["scenario"],
+            "customGoal": self.meta["customGoal"],
             "start": self.meta["start"],
             "updated": now().isoformat(timespec="seconds"),
             "pid": os.getpid(),
@@ -378,10 +390,16 @@ def run_segment(run):
     live = Live(run, number)
     result = None
     with (run.dir / f"segment-{number}.jsonl").open("w") as raw:
+        model = ["--model", run.meta["model"]] if run.meta["model"] else []
+        if run.meta["effort"]:
+            model += ["--effort", run.meta["effort"]]
         proc = subprocess.Popen(
-            [claude_bin(), "-p", "--agent", "app-explorer", "--json-schema", SCHEMA.read_text(),
+            [claude_bin(), "-p", "--agent", "app-explorer", *model, "--json-schema", SCHEMA.read_text(),
              "--output-format", "stream-json", "--verbose", prompt],
             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            # The bot calls the model every few seconds, and each read renews a
+            # 5-minute cache, so the pricier 1-hour writes buy nothing.
+            env={**os.environ, "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m"},
         )
         for line in proc.stdout:
             raw.write(line)
@@ -628,6 +646,9 @@ def main():
     parser.add_argument("scenario")
     parser.add_argument("--steps", type=int, help="override the scenario's maxSteps")
     parser.add_argument("--goal", help="replace the scenario goal; makes the run open-ended")
+    parser.add_argument("--persona", help="replace the scenario persona")
+    parser.add_argument("--model", help="run the bot on this model instead of the agent's default (haiku)")
+    parser.add_argument("--effort", choices=EFFORTS, help="override the agent's effort level (low)")
     args = parser.parse_args()
 
     run = Run(args)
