@@ -195,11 +195,12 @@ class Handler(BaseHTTPRequestHandler):
             if str(body.get("goal", "")).strip():
                 cmd += ["--goal", str(body["goal"]).strip()]
             RUNS.mkdir(exist_ok=True)
-            log = (RUNS / "server-run.log").open("w")
-            # Own session: a run survives the server restarting or its terminal closing.
-            current["proc"] = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                               start_new_session=True)
-            current["log"] = log
+            # Detached: a short-lived shell starts the run in the background and exits, so the run
+            # is not a child of the server and survives the server or its terminal tab closing.
+            # running() and /api/stop then find it by the pid it writes to runs/latest.json.
+            subprocess.run(["/bin/sh", "-c", 'nohup "$@" > runs/server-run.log 2>&1 < /dev/null &', "sh", *cmd],
+                           cwd=ROOT, start_new_session=True, check=True)
+            current["proc"] = None
             return self.send(200, {"started": True})
 
         if path == "/api/stop":
