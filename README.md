@@ -8,6 +8,19 @@ A small take on tools like Harness. The bot runs on Claude (through Claude Code)
 or on ChatGPT models (through the Codex CLI), on your existing subscriptions; no
 API key is needed.
 
+## Terms
+
+| Term | Meaning | Example |
+|---|---|---|
+| **Scenario** | The task for a whole run: goal, persona, step budget, and presets (fresh start, skip onboarding, thinking). One file in `apps/<app>/scenarios/`. | Add Medication flow: open Add Medication and try to break the form, 50 steps, onboarding skipped |
+| **Persona** | The user the bot plays; it shapes which actions the bot picks. Part of the scenario; the web UI can replace it. | Impatient user who taps quickly and never reads |
+| **Step** | One action on the app: tap, type, swipe. Looking at the screen and waiting do not count. | Tap Next |
+| **Segment** | One bot session of up to 10 steps. A run is split into segments so the bot's context stays small; each gets the goal and a short summary of the earlier ones. | A 30-step run is 3 segments of 10 |
+
+A scenario (with its persona) defines a run; the run executes as segments; each segment is a
+series of steps. A run ends when the steps run out, the goal's "Done when" is met, or the bot
+is stuck, so `10 / 15` steps with "goal reached" is a finished run.
+
 ## Requirements
 
 - macOS with Xcode and an iOS Simulator runtime
@@ -133,8 +146,12 @@ to a model.
   typing into an unfocused field is silently lost.
 - **Screenshots** only when something looks wrong: every finding must carry
   one (the schema rejects a finding without it), and nothing else gets one.
-- **Paywalls**: the bot buys a plan; the purchase sheet is the local StoreKit
-  test environment, so nothing is charged. It never signs in to an Apple
+- **Paywalls**: the bot buys a plan; the purchase sheet is a test environment
+  (local StoreKit, or the sandbox Apple Account signed in on the simulator under
+  Settings → Developer), so nothing is charged. Sandbox purchases stay on that
+  account across reinstalls until the subscription lapses. The bot never taps
+  Cancel Subscription or Manage Subscriptions: they open Apple's App Store
+  sheet, which cannot load a mock-store purchase. It never signs in to an Apple
   Account and reports a finding if asked to.
 - **Permissions**: the bot always allows notifications and skips alarms.
 - **Settings is off limits**: the bot never opens the iOS Settings app or
@@ -172,7 +189,9 @@ Scenario front matter:
 | `name` | Title in the report |
 | `freshStart` | `true` uninstalls the app first: no data, no permissions |
 | `maxSteps` | Step budget for the whole run |
-| `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]` |
+| `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account) |
+| `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as CrazyAndFast |
+| `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 `Done when` for open-ended exploration.
@@ -206,7 +225,10 @@ like anything else in Claude Code. Use test data in the app.
 ### Which Xcode
 
 `explore.py` builds with `xcodebuild`, using the Xcode selected by
-`xcode-select -p`, into `.build/DerivedData` (not committed). No Xcode agent
+`xcode-select -p`, into `.build/DerivedData` (not committed). It skips the build when the
+app repo's commit, uncommitted changes, and untracked files hash the same as at
+the last successful build (`.build/fingerprints.json`), and installs the
+existing `.app`. No Xcode agent
 integration is involved, so the Xcode 26.3 requirement on the MobileBuildMCP
 site does not apply here.
 

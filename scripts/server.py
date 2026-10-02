@@ -49,7 +49,9 @@ def scenarios():
             persona = section(text, "Persona")
             items.append({"id": path.stem, "name": name.group(1).strip() if name else path.stem,
                           "maxSteps": int(steps.group(1)) if steps else 50,
-                          "goal": goal, "persona": persona})
+                          "goal": goal, "persona": persona,
+                          "skipOnboarding": bool(re.search(r"^skipOnboarding:\s*true\s*$", text, re.M)),
+                          "thinkingOff": bool(re.search(r"^thinking:\s*\"?off\"?\s*$", text, re.M))})
         apps.append({"id": app_dir.name, "scenarios": items})
     return apps
 

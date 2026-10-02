@@ -18,8 +18,10 @@ bot through the Codex CLI (`codex exec`) against the same MobileBuildMCP server.
 Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
 """
 import argparse
+import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
 import signal
@@ -32,6 +34,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
+# Source fingerprint of the last successful build, per project, scheme, and configuration.
+BUILD_FINGERPRINTS = ROOT / ".build" / "fingerprints.json"
 EFFORTS = ("low", "medium")
 AGENT = ROOT / ".claude" / "agents" / "medstime-probe.md"
 REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
@@ -50,7 +54,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet (it is the local StoreKit test environment, \"Environment: Xcode\", so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -197,7 +201,12 @@ class Run:
             "reportModel": args.report_model,
             "narrate": args.narrate,
             "freshStart": bool(meta.get("freshStart")),
-            "launchArgs": meta.get("launchArgs", []),
+            "skipOnboarding": bool(meta.get("skipOnboarding")),
+            # Scenario preset: "off" runs the bot without extended thinking, for fast runs.
+            "thinking": meta.get("thinking", "on"),
+            "onboardingDefaults": config.get("skipOnboardingDefaults", {}),
+            # App-wide launch arguments (app.md) come first, then the scenario's own.
+            "launchArgs": config.get("launchArgs", []) + meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
             "projectPath": config["projectPath"],
             "scheme": config["scheme"],
@@ -305,6 +314,20 @@ def write_mcp_config(run):
     )
 
 
+def source_fingerprint(project_path):
+    """Hash of the app repo's commit, uncommitted changes, and untracked files, or None outside git."""
+    repo = Path(project_path).parent
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True)
+    head = git("rev-parse", "HEAD")
+    if head.returncode != 0:
+        return None
+    digest = hashlib.sha256(head.stdout + git("diff", "HEAD", "--binary").stdout)
+    for name in sorted(git("ls-files", "--others", "--exclude-standard", "-z").stdout.split(b"\0")):
+        if name:
+            digest.update(name + (repo / name.decode()).read_bytes())
+    return digest.hexdigest()
+
+
 def build_and_launch(run):
     m = run.meta
     udid = m["simulatorId"]
@@ -312,20 +335,32 @@ def build_and_launch(run):
     subprocess.run(["xcrun", "simctl", "boot", udid], capture_output=True)
     subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", udid], capture_output=True)
 
-    run.update("building", "Building the app")
-    with log.open("w") as f:
-        build = subprocess.run(
-            ["xcodebuild", "-project", m["projectPath"], "-scheme", m["scheme"],
-             "-configuration", m["configuration"], "-destination", f"id={udid}",
-             "-derivedDataPath", str(DERIVED_DATA), "build"],
-            stdout=f, stderr=subprocess.STDOUT,
-        )
-    if build.returncode != 0:
-        tail = log.read_text().splitlines()
-        errors = [line for line in tail if "error:" in line] or tail[-30:]
-        raise BuildFailed("\n".join(errors[-30:]))
-
+    key = f"{m['projectPath']}|{m['scheme']}|{m['configuration']}"
+    fingerprint = source_fingerprint(m["projectPath"])
+    try:
+        fingerprints = json.loads(BUILD_FINGERPRINTS.read_text())
+    except (OSError, ValueError):
+        fingerprints = {}
     products = DERIVED_DATA / "Build" / "Products" / f"{m['configuration']}-iphonesimulator"
+    if fingerprint and fingerprints.get(key) == fingerprint and any(products.glob("*.app")):
+        log.write_text(f"Skipped: app sources unchanged since the last build ({fingerprint[:12]}).\n")
+    else:
+        run.update("building", "Building the app")
+        with log.open("w") as f:
+            build = subprocess.run(
+                ["xcodebuild", "-project", m["projectPath"], "-scheme", m["scheme"],
+                 "-configuration", m["configuration"], "-destination", f"id={udid}",
+                 "-derivedDataPath", str(DERIVED_DATA), "build"],
+                stdout=f, stderr=subprocess.STDOUT,
+            )
+        if build.returncode != 0:
+            tail = log.read_text().splitlines()
+            errors = [line for line in tail if "error:" in line] or tail[-30:]
+            raise BuildFailed("\n".join(errors[-30:]))
+        if fingerprint:
+            fingerprints[key] = fingerprint
+            BUILD_FINGERPRINTS.write_text(json.dumps(fingerprints, indent=2) + "\n")
+
     app = None
     for candidate in products.glob("*.app"):
         bundle = subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier",
@@ -339,8 +374,26 @@ def build_and_launch(run):
     if m["freshStart"]:
         subprocess.run(["xcrun", "simctl", "uninstall", udid, m["bundleId"]], capture_output=True)
     subprocess.run(["xcrun", "simctl", "install", udid, str(app)], check=True, capture_output=True)
+    if m["skipOnboarding"]:
+        skip_onboarding(m)
     subprocess.run(["xcrun", "simctl", "launch", "--terminate-running-process", udid, m["bundleId"],
                     *m["launchArgs"]], check=True, capture_output=True)
+
+
+def skip_onboarding(m):
+    """Marks onboarding finished before launch by writing app.md skipOnboardingDefaults into the
+    app's own preferences plist, inside its data container, so deleting the app removes them.
+    (`simctl spawn defaults write` would write the simulator-wide domain, which outlives the app.)"""
+    if not m["onboardingDefaults"]:
+        raise SystemExit("skipOnboarding needs skipOnboardingDefaults in app.md")
+    udid, bundle = m["simulatorId"], m["bundleId"]
+    subprocess.run(["xcrun", "simctl", "terminate", udid, bundle], capture_output=True)
+    container = subprocess.run(["xcrun", "simctl", "get_app_container", udid, bundle, "data"],
+                               check=True, capture_output=True, text=True).stdout.strip()
+    path = Path(container) / "Library" / "Preferences" / f"{bundle}.plist"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prefs = plistlib.loads(path.read_bytes()) if path.exists() else {}
+    path.write_bytes(plistlib.dumps({**prefs, **m["onboardingDefaults"]}))
 
 
 class BuildFailed(Exception):
@@ -487,7 +540,8 @@ def run_segment(run):
             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             # The bot calls the model every few seconds, and each read renews a
             # 5-minute cache, so the pricier 1-hour writes buy nothing.
-            env={**os.environ, "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m"},
+            env={**os.environ, "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m",
+                 **({"MAX_THINKING_TOKENS": "0"} if run.meta["thinking"] == "off" else {})},
         )
         for line in proc.stdout:
             raw.write(line)

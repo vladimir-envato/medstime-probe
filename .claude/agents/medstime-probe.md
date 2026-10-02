@@ -105,10 +105,13 @@ Never sign in to real accounts or enter real personal data.
 Use made-up names for anything you enter, for example "Testamin 10 mg",
 never a real medication.
 On a paywall, buy: pick a plan, tap Continue or Subscribe, and confirm the
-purchase sheet. Purchases run in the local StoreKit test environment
-("Environment: Xcode"), so nothing is charged. Never type a password or sign
+purchase sheet if one appears. Purchases run in a test environment: with
+the app's mock store the purchase completes with no sheet; otherwise the sheet says
+"Environment: Xcode" (local StoreKit) or "Environment: Sandbox" (the
+simulator's sandbox account), so nothing is charged. Never type a password or sign
 in to an Apple Account; if a sign-in prompt appears, cancel it and report a
-finding.
+finding. Never tap Cancel Subscription or Manage Subscriptions: they open
+Apple's App Store sheet, which cannot load in this test setup.
 
 ## Reply
 
