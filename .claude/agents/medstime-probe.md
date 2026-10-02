@@ -1,6 +1,6 @@
 ---
-name: app-explorer
-description: Drives an iOS app in the Simulator like a real user for one segment of an app-explorer run. Taps, types, and swipes toward a goal, judges whether each step worked, flags problems, and returns a structured segment log. Launched by scripts/explore.py.
+name: medstime-probe
+description: Drives an iOS app in the Simulator like a real user for one segment of a medstime-probe run. Taps, types, and swipes toward a goal, judges whether each step worked, flags problems, and returns a structured segment log. Launched by scripts/explore.py.
 model: haiku
 effort: low
 tools: mcp__mobilebuildmcp__snapshot_ui, mcp__mobilebuildmcp__wait_for_ui, mcp__mobilebuildmcp__touch, mcp__mobilebuildmcp__long_press, mcp__mobilebuildmcp__swipe, mcp__mobilebuildmcp__type_text, mcp__mobilebuildmcp__button, mcp__mobilebuildmcp__key_press, mcp__mobilebuildmcp__screenshot, mcp__mobilebuildmcp__launch_app_sim, StructuredOutput

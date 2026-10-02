@@ -1,10 +1,10 @@
 ---
-name: explore-app
-description: Run the app-explorer bot on an iOS app in the Simulator through scripts/explore.py, then report the outcome. Use when the user runs /explore-app <app> <scenario> [steps] [goal].
+name: probe
+description: Run the medstime-probe bot on an iOS app in the Simulator through scripts/explore.py, then report the outcome. Use when the user runs /probe <app> <scenario> [steps] [goal].
 argument-hint: <app> <scenario> [steps] [goal]
 ---
 
-# Explore an app
+# Probe an app
 
 Arguments: `<app> <scenario>`, optionally a step count and a goal, for example
 `medstime onboarding` or `medstime autonomous 40 "Try to add and edit a medication"`.

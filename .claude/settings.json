@@ -3,7 +3,7 @@
   "permissions": {
     "allow": [
       "mcp__mobilebuildmcp",
-      "Skill(explore-app)",
+      "Skill(probe)",
       "Bash(python3 scripts/explore.py:*)"
     ]
   }

@@ -3,110 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>App Explorer</title>
+<title>MedsTime Probe</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<style>
-  :root {
-    --bg: #f6f6f4; --panel: #ffffff; --line: #e3e2de; --text: #1d1d1b; --muted: #6b6a66;
-    --accent: #7c4dff; --accent-soft: #efe9ff; --ok: #1f8a4c; --warn: #b26a00; --bad: #c62828;
-    --ok-soft: #e6f4ec; --warn-soft: #fbf0dd; --bad-soft: #fdeaea;
-    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #141413; --panel: #1d1d1b; --line: #2f2e2b; --text: #ecebe7; --muted: #9a9892;
-      --accent: #a98bff; --accent-soft: #2a2340; --ok: #4cc27f; --warn: #e0a24a; --bad: #ef6b6b;
-      --ok-soft: #1a2c22; --warn-soft: #33281a; --bad-soft: #351e1e;
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  header { padding: 16px 24px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 17px; margin: 0; }
-  header .sub { color: var(--muted); }
-  main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; padding: 20px 24px; max-width: 1400px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 16px; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
-  .stack > * + * { margin-top: 16px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
-  select, input, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
-         background: var(--bg); color: var(--text); font: inherit; }
-  textarea { min-height: 90px; resize: vertical; }
-  .stepper { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 8px;
-             background: var(--bg); overflow: hidden; }
-  .stepper:focus-within { border-color: var(--accent); }
-  .stepper input { border: 0; border-radius: 0; background: transparent; text-align: center;
-                   font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; padding: 8px 0;
-                   -moz-appearance: textfield; appearance: textfield; }
-  .stepper input:focus { outline: none; }
-  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  .stepper button { flex: 0 0 44px; border: 0; border-radius: 0; background: transparent; color: var(--accent);
-                    font-size: 20px; font-weight: 500; padding: 0; }
-  .stepper button:hover:not(:disabled) { background: var(--accent-soft); }
-  .stepper button:first-child { border-right: 1px solid var(--line); }
-  .stepper button:last-child { border-left: 1px solid var(--line); }
-  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .buttons { display: flex; gap: 8px; margin-top: 16px; }
-  button { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--line); font: inherit; font-weight: 600;
-           cursor: pointer; background: var(--panel); color: var(--text); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button:disabled { opacity: .45; cursor: default; }
-  select:disabled, input:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
-  .error { color: var(--bad); font-size: 13px; margin-top: 8px; min-height: 1em; }
-  .status-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent); }
-  .pill.done { background: var(--ok-soft); color: var(--ok); }
-  .pill.failed, .pill.stuck { background: var(--bad-soft); color: var(--bad); }
-  .title { font-weight: 600; font-size: 16px; }
-  .muted { color: var(--muted); }
-  .bar { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; margin: 14px 0 6px; }
-  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .4s; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 14px; }
-  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  .stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .stat .k { font-size: 12px; color: var(--muted); }
-  .stat .v.provisional { color: var(--muted); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; }
-  .r-success { color: var(--ok); } .r-no_effect { color: var(--warn); } .r-unexpected { color: var(--bad); }
-  .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
-  .sev-crash, .sev-bug { background: var(--bad-soft); color: var(--bad); }
-  .sev-ux { background: var(--warn-soft); color: var(--warn); }
-  .sev-minor { background: var(--accent-soft); color: var(--accent); }
-  .finding { padding: 10px 0; border-bottom: 1px solid var(--line); }
-  .finding:last-child { border: 0; }
-  ol.segs { margin: 0; padding-left: 20px; } ol.segs li + li { margin-top: 6px; }
-  .runs a { display: block; padding: 8px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
-  .runs a:hover .rt { color: var(--accent); }
-  .runs .rt { font-weight: 600; }
-  .runs .rm { font-size: 12px; color: var(--muted); }
-  .report { overflow-x: auto; }
-  .report img { max-width: 240px; border-radius: 8px; border: 1px solid var(--line); display: block; margin: 8px 0; }
-  .report table { margin: 8px 0; }
-  .report h1 { font-size: 20px; } .report h2 { font-size: 14px; text-transform: none; color: var(--text); margin-top: 20px; }
-  .empty { color: var(--muted); font-size: 13px; }
-  .tokens { font-size: 12px; margin-top: 10px; font-variant-numeric: tabular-nums; }
-  .tokens div + div { margin-top: 2px; }
-  a.flink { color: var(--bad); font-weight: 700; text-decoration: none; margin-left: 6px; font-size: 11px; text-transform: uppercase; }
-  a.flink:hover { text-decoration: underline; }
-  .finding img { max-width: 220px; border-radius: 10px; border: 1px solid var(--line); display: block; margin-top: 8px; cursor: zoom-in; }
-  .finding.flash, .report .flash { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
-  .feed { list-style: none; margin: 0; padding: 0; font-size: 13px; }
-  .feed li { display: grid; grid-template-columns: 64px 90px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
-  .feed li:first-child { font-weight: 600; }
-  .feed li:first-child .tool { color: var(--accent); }
-  .feed .time { color: var(--muted); font-variant-numeric: tabular-nums; }
-  .feed .detail { overflow-wrap: anywhere; }
-  .scroll { max-height: 420px; overflow-y: auto; }
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header>
-  <h1>App Explorer</h1>
+  <h1>MedsTime Probe</h1>
   <span class="sub">Bot u iOS simulatoru</span>
+  <nav><a href="/" class="active">Runovi</a><a href="/history">Istorija nalaza</a></nav>
 </header>
 <main>
   <div class="stack">
@@ -126,7 +31,7 @@
       <label for="model">Model</label>
       <select id="model">
         <optgroup label="Haiku">
-          <option value="claude-haiku-4-5">Haiku 4.5 (podrazumevano, najjeftiniji)</option>
+          <option value="claude-haiku-4-5">Haiku 4.5 (default)</option>
         </optgroup>
         <optgroup label="Sonnet">
           <option value="claude-sonnet-5-5">Sonnet 5.5</option>
@@ -154,14 +59,14 @@
       </select>
       <label for="effort">Effort</label>
       <select id="effort">
-        <option value="">Podrazumevano (low)</option>
+        <option value="">Low (default)</option>
         <option value="low">low</option>
         <option value="medium">medium</option>
       </select>
       <div class="hint" id="effortHint"></div>
       <label for="reportModel">Izveštaj piše</label>
       <select id="reportModel">
-        <option value="claude-sonnet-5-5">Sonnet 5.5 (podrazumevano)</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 (default)</option>
         <option value="claude-opus-5-5">Opus 5.5</option>
         <option value="gpt-6-sol">GPT-6 Sol</option>
       </select>
@@ -181,7 +86,7 @@
       <div class="error" id="error"></div>
     </section>
     <section class="panel">
-      <h2>Raniji runovi</h2>
+      <h2>Poslednjih 5 runova</h2>
       <div class="runs" id="runs"><div class="empty">Nema runova.</div></div>
     </section>
   </div>
@@ -282,7 +187,7 @@ async function loadOptions() {
   const data = await api("/api/options");
   options = data.apps;
   personas = data.personas || [];
-  $("personaPick").innerHTML = `<option value="">Persona scenarija (podrazumevano)</option>` +
+  $("personaPick").innerHTML = `<option value="">Persona scenarija (default)</option>` +
     personas.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
   $("app").innerHTML = options.map(a => `<option value="${esc(a.id)}">${esc(a.id)}</option>`).join("");
   fillScenarios();
@@ -383,13 +288,15 @@ async function showReport(runDir) {
 }
 
 async function loadRuns() {
-  const runs = (await api("/api/runs")).runs;
+  const {runs, total} = await api("/api/runs");
   $("runs").innerHTML = runs.map(r => {
     const f = r.findings || {};
     const n = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
     return `<a href="#" data-run="${esc(r.runDir)}"><div class="rt">${esc(r.app)} · ${esc(r.scenario)}</div>
       <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${esc((r.model || "haiku").replace("claude-", ""))}${r.effort ? " · " + esc(r.effort) : ""} · ${r.steps}/${r.maxSteps} koraka · ${n} nalaza · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokena" : ""}</div></a>`;
   }).join("") || `<div class="empty">Nema runova.</div>`;
+  if (total > runs.length) $("runs").insertAdjacentHTML("beforeend",
+    `<div class="more">Još ${total - runs.length} ${total - runs.length === 1 ? "run" : "runova"} u /runs folderu.</div>`);
   $("runs").querySelectorAll("a").forEach(a => a.onclick = e => {
     e.preventDefault(); showReport(a.dataset.run);
     $("reportPanel").scrollIntoView({behavior: "smooth"});
@@ -499,7 +406,11 @@ $("stop").onclick = async () => {
 };
 
 syncEffort();
-loadOptions().then(loadRuns).then(poll);
+loadOptions().then(loadRuns).then(poll).then(() => {
+  // /?run=<dir> opens that run's report, for links from the history page.
+  const run = new URLSearchParams(location.search).get("run");
+  if (run) showReport(run).then(() => $("reportPanel").scrollIntoView());
+});
 setInterval(poll, 2000);
 </script>
 </body>

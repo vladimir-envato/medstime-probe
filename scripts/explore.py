@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run the app-explorer bot on an iOS app, without a model as orchestrator.
+"""Run the medstime-probe bot on an iOS app, without a model as orchestrator.
 
 Usage:
   explore.py <app> <scenario> [--steps N] [--goal "..."] [--persona "..."] [--model M] [--effort E]
 
 The script builds and installs the app, runs the bot in segments through
-`claude -p --agent app-explorer --json-schema`, records every segment, and at
+`claude -p --agent medstime-probe --json-schema`, records every segment, and at
 the end asks the report model once for the report summary and analysis.
 
 --steps overrides the scenario's maxSteps. --goal replaces the scenario's goal
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
 EFFORTS = ("low", "medium")
-AGENT = ROOT / ".claude" / "agents" / "app-explorer.md"
+AGENT = ROOT / ".claude" / "agents" / "medstime-probe.md"
 REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
 CODEX_APP_BIN = Path("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
 # Codex has no StructuredOutput tool; --output-schema makes the final message the result.
@@ -462,7 +462,7 @@ def run_segment(run):
         if run.meta["effort"]:
             model += ["--effort", run.meta["effort"]]
         proc = subprocess.Popen(
-            [claude_bin(), "-p", "--agent", "app-explorer", *model, "--json-schema", SCHEMA.read_text(),
+            [claude_bin(), "-p", "--agent", "medstime-probe", *model, "--json-schema", SCHEMA.read_text(),
              "--output-format", "stream-json", "--verbose", prompt],
             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             # The bot calls the model every few seconds, and each read renews a

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web UI for app-explorer.
+"""Local web UI for medstime-probe.
 
 Usage: scripts/server.py [--port 8765]
 
@@ -98,7 +98,25 @@ def runs_list():
             out.append({k: status.get(k) for k in
                         ("runDir", "app", "scenario", "state", "message", "start", "steps", "maxSteps",
                          "findings", "costUSD", "tokens", "model", "effort")})
-    return out[:50]
+    return out
+
+
+def findings_history():
+    """Every finding of every run, newest run first, with its run's context."""
+    out = []
+    for path in sorted(RUNS.iterdir(), reverse=True):
+        status = read_json(path / "status.json") if path.is_dir() else None
+        if not status or not (path / "findings.jsonl").exists():
+            continue
+        for i, line in enumerate((path / "findings.jsonl").read_text().splitlines()):
+            try:
+                finding = json.loads(line)
+            except ValueError:
+                continue
+            out.append({**finding, "id": f"{path.name}/{i}", "runDir": path.name, "app": status.get("app"),
+                        "scenario": status.get("scenario"), "start": status.get("start"),
+                        "model": status.get("model"), "outcome": status.get("message")})
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -126,14 +144,21 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(urlparse(self.path).path)
         if path in ("/", "/index.html"):
             return self.file(WEB / "index.html")
+        if path == "/history":
+            return self.file(WEB / "history.html")
+        if path == "/style.css":
+            return self.file(WEB / "style.css")
+        if path == "/api/findings":
+            return self.send(200, {"findings": findings_history()})
         if path == "/api/options":
             return self.send(200, {"apps": scenarios(), "personas": personas()})
         if path == "/api/status":
             status = read_json(RUNS / "latest.json")
             return self.send(200, {"running": running(), "status": status})
         if path == "/api/runs":
-            return self.send(200, {"runs": runs_list()})
-        match = re.match(r"^/runs/([A-Za-z0-9_-]+)/(report\.md|status\.json|screenshots/[A-Za-z0-9_.-]+)$", path)
+            runs = runs_list()
+            return self.send(200, {"runs": runs[:5], "total": len(runs)})
+        match = re.match(r"^/runs/([A-Za-z0-9_-]+)/(report\.md|status\.json|steps\.jsonl|screenshots/[A-Za-z0-9_.-]+)$", path)
         if match:
             return self.file(RUNS / match.group(1) / match.group(2))
         self.send(404, {"error": "not found"})
@@ -189,7 +214,7 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"app-explorer UI: http://127.0.0.1:{args.port}", flush=True)
+    print(f"medstime-probe UI: http://127.0.0.1:{args.port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
