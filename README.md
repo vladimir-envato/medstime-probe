@@ -8,6 +8,19 @@ A small take on tools like Harness. The bot runs on Claude (through Claude Code)
 or on ChatGPT models (through the Codex CLI), on your existing subscriptions; no
 API key is needed.
 
+## Terms
+
+| Term | Meaning | Example |
+|---|---|---|
+| **Scenario** | The task for a whole run: goal, persona, step budget, and presets (fresh start, skip onboarding, thinking). One file in `apps/<app>/scenarios/`. | Add Medication flow: open Add Medication and try to break the form, 50 steps, onboarding skipped |
+| **Persona** | The user the bot plays; it shapes which actions the bot picks. Part of the scenario; the web UI can replace it. | Impatient user who taps quickly and never reads |
+| **Step** | One action on the app: tap, type, swipe. Looking at the screen and waiting do not count. | Tap Next |
+| **Segment** | One bot session of up to 10 steps. A run is split into segments so the bot's context stays small; each gets the goal and a short summary of the earlier ones. | A 30-step run is 3 segments of 10 |
+
+A scenario (with its persona) defines a run; the run executes as segments; each segment is a
+series of steps. A run ends when the steps run out, the goal's "Done when" is met, or the bot
+is stuck, so `10 / 15` steps with "goal reached" is a finished run.
+
 ## Requirements
 
 - macOS with Xcode and an iOS Simulator runtime
