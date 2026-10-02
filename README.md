@@ -194,7 +194,7 @@ Scenario front matter:
 | `freshStart` | `true` uninstalls the app first: no data, no permissions |
 | `maxSteps` | Step budget for the whole run |
 | `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account) |
-| `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as CrazyAndFast |
+| `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as Autonomous - Fast random taps (`autonomous-fast`) |
 | `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out

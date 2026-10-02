@@ -1,5 +1,5 @@
 ---
-name: CrazyAndFast
+name: Autonomous - Fast random taps
 freshStart: true
 skipOnboarding: true
 thinking: "off"
