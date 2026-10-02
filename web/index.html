@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,24 +10,24 @@
 <body>
 <header>
   <h1>MedsTime Probe</h1>
-  <span class="sub">Bot u iOS simulatoru</span>
-  <nav><a href="/" class="active">Runovi</a><a href="/history">Istorija nalaza</a></nav>
+  <span class="sub">Bot in the iOS Simulator</span>
+  <nav><a href="/" class="active">Runs</a><a href="/history">Finding history</a></nav>
 </header>
 <main>
   <div class="stack">
     <section class="panel">
-      <h2>Novi run</h2>
-      <label for="app">Aplikacija</label>
+      <h2>New run</h2>
+      <label for="app">App</label>
       <select id="app"></select>
       <label for="scenario">Scenario</label>
       <select id="scenario"></select>
-      <label for="steps">Broj koraka</label>
+      <label for="steps">Steps</label>
       <div class="stepper">
-        <button type="button" id="stepsDown" aria-label="Manje koraka">−</button>
+        <button type="button" id="stepsDown" aria-label="Fewer steps">−</button>
         <input id="steps" type="number" min="1" max="500" inputmode="numeric">
-        <button type="button" id="stepsUp" aria-label="Više koraka">+</button>
+        <button type="button" id="stepsUp" aria-label="More steps">+</button>
       </div>
-      <div class="hint">Dugmad menjaju za 5.</div>
+      <div class="hint">The buttons change it by 5.</div>
       <label for="model">Model</label>
       <select id="model">
         <optgroup label="Haiku">
@@ -64,29 +64,29 @@
         <option value="medium">medium</option>
       </select>
       <div class="hint" id="effortHint"></div>
-      <label for="reportModel">Izveštaj piše</label>
+      <label for="reportModel">Report model</label>
       <select id="reportModel">
         <option value="claude-sonnet-5-5">Sonnet 5.5 (default)</option>
         <option value="claude-opus-5-5">Opus 5.5</option>
         <option value="gpt-6-sol">GPT-6 Sol</option>
       </select>
-      <div class="hint">Izveštaj se uvek piše sa effort low.</div>
-      <label for="narrate">Komentari bota</label>
+      <div class="hint">The report is always written with effort low.</div>
+      <label for="narrate">Bot commentary</label>
       <select id="narrate">
-        <option value="">Isključeni (default)</option>
-        <option value="1">Uključeni</option>
+        <option value="">Off (default)</option>
+        <option value="1">On</option>
       </select>
-      <div class="hint">Bot pre svake akcije napiše rečenicu šta radi, vidi se u panelu Uživo. Sporije je.</div>
+      <div class="hint">Before each action the bot writes a sentence about what it is doing, shown in the Live panel. Slower.</div>
       <label for="personaPick">Persona</label>
       <select id="personaPick"></select>
       <textarea id="persona" rows="3"></textarea>
-      <label>Cilj scenarija</label>
+      <label>Scenario goal</label>
       <div class="hint" id="scenarioGoal" style="white-space: pre-wrap; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;"></div>
-      <div class="hint" id="scenarioSkip" hidden>Onboarding se preskače: aplikacija se posle sveže instalacije otvara pravo na Schedule.</div>
-      <div class="hint" id="scenarioThinking" hidden>Bot radi bez razmišljanja (brže, manje pažljivo). Važi za Claude modele.</div>
-      <label for="goal">Prompt (opciono)</label>
-      <textarea id="goal" rows="4" placeholder="Prazno = bot radi po cilju scenarija."></textarea>
-      <div class="hint">Ako upišeš prompt, on zamenjuje cilj scenarija za ovaj run, i run nema fiksan kraj: bot istražuje dok ne potroši korake.</div>
+      <div class="hint" id="scenarioSkip" hidden>Onboarding is skipped: after a fresh install the app opens straight on Schedule.</div>
+      <div class="hint" id="scenarioThinking" hidden>The bot runs without thinking (faster, less careful). Applies to Claude models.</div>
+      <label for="goal">Prompt (optional)</label>
+      <textarea id="goal" rows="4" placeholder="Empty = the bot follows the scenario goal."></textarea>
+      <div class="hint">A prompt replaces the scenario goal for this run, and the run has no fixed end: the bot explores until the steps run out.</div>
       <div class="buttons">
         <button id="start" class="primary">Start</button>
         <button id="stop">Stop</button>
@@ -94,8 +94,8 @@
       <div class="error" id="error"></div>
     </section>
     <section class="panel">
-      <h2>Poslednjih 5 runova</h2>
-      <div class="runs" id="runs"><div class="empty">Nema runova.</div></div>
+      <h2>Last 5 runs</h2>
+      <div class="runs" id="runs"><div class="empty">No runs.</div></div>
     </section>
   </div>
 
@@ -103,51 +103,51 @@
     <section class="panel" id="live">
       <div class="status-top">
         <span class="pill" id="state">—</span>
-        <span class="title" id="runTitle">Nema aktivnog runa</span>
+        <span class="title" id="runTitle">No active run</span>
         <span class="muted" id="message"></span>
       </div>
       <div class="muted" id="runSetup"></div>
       <div class="bar"><div id="progress"></div></div>
       <div class="muted" id="progressText"></div>
       <div class="stats">
-        <div class="stat"><div class="v" id="sSteps">0</div><div class="k">Koraci</div></div>
-        <div class="stat"><div class="v" id="sSegments">0</div><div class="k">Segmenti</div></div>
-        <div class="stat"><div class="v" id="sFindings">0</div><div class="k">Nalazi</div></div>
-        <div class="stat"><div class="v" id="sCost">$0.00</div><div class="k">Trošak</div></div>
-        <div class="stat"><div class="v" id="sTokens">0</div><div class="k">Tokeni</div></div>
-        <div class="stat"><div class="v" id="sTime">0:00</div><div class="k">Trajanje</div></div>
+        <div class="stat"><div class="v" id="sSteps">0</div><div class="k">Steps</div></div>
+        <div class="stat"><div class="v" id="sSegments">0</div><div class="k">Segments</div></div>
+        <div class="stat"><div class="v" id="sFindings">0</div><div class="k">Findings</div></div>
+        <div class="stat"><div class="v" id="sCost">$0.00</div><div class="k">Cost</div></div>
+        <div class="stat"><div class="v" id="sTokens">0</div><div class="k">Tokens</div></div>
+        <div class="stat"><div class="v" id="sTime">0:00</div><div class="k">Duration</div></div>
       </div>
       <div class="tokens muted" id="tokenDetail"></div>
     </section>
 
     <section class="panel" id="livePanel" hidden>
-      <h2>Uživo <span class="muted" id="liveMeta"></span></h2>
+      <h2>Live <span class="muted" id="liveMeta"></span></h2>
       <ul class="feed" id="liveFeed"></ul>
     </section>
 
     <section class="panel">
-      <h2>Segmenti</h2>
+      <h2>Segments</h2>
       <ol class="segs" id="segs"></ol>
-      <div class="empty" id="segsEmpty">Bot još nije završio nijedan segment.</div>
+      <div class="empty" id="segsEmpty">The bot has not finished a segment yet.</div>
     </section>
 
     <section class="panel">
-      <h2>Poslednji koraci</h2>
+      <h2>Recent steps</h2>
       <div class="scroll">
         <table>
-          <thead><tr><th>#</th><th>Ekran</th><th>Akcija</th><th>Cilj</th><th>Rezultat</th></tr></thead>
+          <thead><tr><th>#</th><th>Screen</th><th>Action</th><th>Target</th><th>Result</th></tr></thead>
           <tbody id="steps-body"></tbody>
         </table>
       </div>
     </section>
 
     <section class="panel">
-      <h2>Nalazi</h2>
-      <div id="findings"><div class="empty">Nema nalaza.</div></div>
+      <h2>Findings</h2>
+      <div id="findings"><div class="empty">No findings.</div></div>
     </section>
 
     <section class="panel" id="reportPanel" hidden>
-      <h2>Izveštaj</h2>
+      <h2>Report</h2>
       <div class="report" id="report"></div>
     </section>
   </div>
@@ -158,8 +158,8 @@ const $ = id => document.getElementById(id);
 let options = [], personas = [], lastRunDir = null, lastState = null, viewing = null;
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const STATES = {preparing: "Priprema", building: "Build", installing: "Instalacija", running: "Radi",
-                reporting: "Izveštaj", done: "Gotovo", failed: "Neuspeh"};
+const STATES = {preparing: "Preparing", building: "Building", installing: "Installing", running: "Running",
+                reporting: "Report", done: "Done", failed: "Failed"};
 
 async function api(path, body) {
   const res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
@@ -197,7 +197,7 @@ async function loadOptions() {
   const data = await api("/api/options");
   options = data.apps;
   personas = data.personas || [];
-  $("personaPick").innerHTML = `<option value="">Persona scenarija (default)</option>` +
+  $("personaPick").innerHTML = `<option value="">Scenario persona (default)</option>` +
     personas.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
   $("app").innerHTML = options.map(a => `<option value="${esc(a.id)}">${esc(a.id)}</option>`).join("");
   fillScenarios();
@@ -225,7 +225,7 @@ function renderStatus(data) {
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
   $("runTitle").textContent = `${st.app} · ${st.scenario}`;
   $("runSetup").textContent = [st.model && `Model: ${st.model.replace("claude-", "")}`,
-    st.effort && `Effort: ${st.effort}`, st.reportModel && `Izveštaj: ${st.reportModel.replace("claude-", "")}`, st.narrate && "Komentari: uključeni", st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
+    st.effort && `Effort: ${st.effort}`, st.reportModel && `Report: ${st.reportModel.replace("claude-", "")}`, st.narrate && "Commentary: on", st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
   $("message").textContent = st.message || "";
   // Recorded steps come from the bot's segment report; during a segment, add
   // the app actions seen live so the count moves with every tap.
@@ -233,8 +233,8 @@ function renderStatus(data) {
   const steps = Math.min(st.maxSteps, st.steps + liveSteps);
   const pct = Math.min(100, 100 * steps / st.maxSteps);
   $("progress").style.width = pct + "%";
-  $("progressText").textContent = `${steps} / ${st.maxSteps} koraka` +
-    (liveSteps ? ` · ${liveSteps} u segmentu ${st.live.segment} (uživo)` : "");
+  $("progressText").textContent = `${steps} / ${st.maxSteps} steps` +
+    (liveSteps ? ` · ${liveSteps} in segment ${st.live.segment} (live)` : "");
   const f = st.findings || {};
   $("sSteps").textContent = steps;
   // A running segment counts too, in grey, until its log arrives.
@@ -253,25 +253,25 @@ function renderStatus(data) {
   $("sTokens").classList.toggle("provisional", provisional);
   $("sCost").classList.toggle("provisional", provisional);
   $("tokenDetail").innerHTML = Object.entries(st.tokensByModel || {}).map(([m, t]) =>
-    `<div>${esc(m)}: ${tk(sum(t))} · ulaz ${tk(t.input)} · keš čitanje ${tk(t.cacheRead)} · keš upis ${tk(t.cacheWrite)} · izlaz ${tk(t.output)} · $${((st.costByModel || {})[m] || 0).toFixed(3)}</div>`
-  ).join("") + (liveTokens ? `<div>Segment ${st.live.segment} u toku: ${tk(liveTokens)} tokena (izlaz ${tk(st.live.tokens.output)}); trošak stiže kad se segment završi.</div>` : "");
+    `<div>${esc(m)}: ${tk(sum(t))} · input ${tk(t.input)} · cache read ${tk(t.cacheRead)} · cache write ${tk(t.cacheWrite)} · output ${tk(t.output)} · $${((st.costByModel || {})[m] || 0).toFixed(3)}</div>`
+  ).join("") + (liveTokens ? `<div>Segment ${st.live.segment} running: ${tk(liveTokens)} tokens (output ${tk(st.live.tokens.output)}); cost arrives when the segment ends.</div>` : "");
   clock = {start: st.start, end: finished || !isRunning ? st.updated : null};
   tickClock();
 
   const live = st.live;
   $("livePanel").hidden = !live || finished;
   if (live && !finished) {
-    $("liveMeta").textContent = `· segment ${live.segment} · ${live.toolCalls} poziva alata`;
+    $("liveMeta").textContent = `· segment ${live.segment} · ${live.toolCalls} tool calls`;
     $("liveFeed").innerHTML = (live.actions || []).slice().reverse().map(a =>
       `<li><span class="time">${esc(a.time)}</span><span class="tool">${esc(a.tool)}</span><span class="detail">${esc(a.detail)}</span></li>`
-    ).join("") || `<li><span></span><span></span><span class="empty">Čekam prvu akciju…</span></li>`;
+    ).join("") || `<li><span></span><span></span><span class="empty">Waiting for the first action…</span></li>`;
   }
 
   $("segs").innerHTML = (st.segmentSummaries || []).map(s => `<li>${esc(s)}</li>`).join("");
   $("segsEmpty").hidden = (st.segmentSummaries || []).length > 0;
   $("segsEmpty").textContent = segmentRunning
-    ? `Segment ${st.live.segment} je u toku; sažetak stiže kad bot završi segment.`
-    : "Bot još nije završio nijedan segment.";
+    ? `Segment ${st.live.segment} is running; its summary arrives when the bot finishes the segment.`
+    : "The bot has not finished a segment yet.";
 
   const run = encodeURIComponent(st.runDir);
   const findingsByStep = {};
@@ -280,14 +280,14 @@ function renderStatus(data) {
     `<tr><td>${s.step}</td><td>${esc(s.screen)}</td><td>${esc(s.action)}</td><td>${esc(s.target)}</td>
      <td class="r-${esc(s.result)}">${esc(s.result)}${(findingsByStep[s.step] || []).map(f =>
        `<a class="flink" href="#live-finding-${f.i}">${esc(f.severity)}</a>`).join("")}</td></tr>`).join("") ||
-    `<tr><td colspan="5" class="empty">Koraci stižu kad bot završi segment (do 10 koraka po segmentu).</td></tr>`;
+    `<tr><td colspan="5" class="empty">Steps arrive when the bot finishes a segment (up to 10 steps per segment).</td></tr>`;
 
   $("findings").innerHTML = (st.recentFindings || []).map((x, i) =>
     `<div class="finding" id="live-finding-${i}"><span class="sev sev-${esc(x.severity)}">${esc(x.severity)}</span>
-     <strong>${esc(x.title)}</strong><div class="muted">${esc(x.screen)} · korak ${esc(x.step)}</div>
+     <strong>${esc(x.title)}</strong><div class="muted">${esc(x.screen)} · step ${esc(x.step)}</div>
      <div>${esc(x.details)}</div>
-     ${x.screenshot ? `<a href="/runs/${run}/${esc(x.screenshot)}" target="_blank"><img src="/runs/${run}/${esc(x.screenshot)}" alt="Screenshot nalaza"></a>` : ""}</div>`
-  ).join("") || `<div class="empty">Nema nalaza.</div>`;
+     ${x.screenshot ? `<a href="/runs/${run}/${esc(x.screenshot)}" target="_blank"><img src="/runs/${run}/${esc(x.screenshot)}" alt="Finding screenshot"></a>` : ""}</div>`
+  ).join("") || `<div class="empty">No findings.</div>`;
 
   if (finished && (st.runDir !== lastRunDir || st.state !== lastState)) {
     showReport(st.runDir);
@@ -317,10 +317,10 @@ async function loadRuns() {
     const f = r.findings || {};
     const n = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
     return `<a href="#" data-run="${esc(r.runDir)}"><div class="rt">${esc(r.app)} · ${esc(r.scenario)}</div>
-      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${esc((r.model || "haiku").replace("claude-", ""))}${r.effort ? " · " + esc(r.effort) : ""} · ${r.steps}/${r.maxSteps} koraka · ${n} nalaza · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokena" : ""}</div></a>`;
-  }).join("") || `<div class="empty">Nema runova.</div>`;
+      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${esc((r.model || "haiku").replace("claude-", ""))}${r.effort ? " · " + esc(r.effort) : ""} · ${r.steps}/${r.maxSteps} steps · ${n} findings · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokens" : ""}</div></a>`;
+  }).join("") || `<div class="empty">No runs.</div>`;
   if (total > runs.length) $("runs").insertAdjacentHTML("beforeend",
-    `<div class="more">Još ${total - runs.length} ${total - runs.length === 1 ? "run" : "runova"} u /runs folderu.</div>`);
+    `<div class="more">${total - runs.length} more ${total - runs.length === 1 ? "run" : "runs"} in the /runs folder.</div>`);
   $("runs").querySelectorAll("a").forEach(a => a.onclick = e => {
     e.preventDefault(); showReport(a.dataset.run);
     $("reportPanel").scrollIntoView({behavior: "smooth"});
@@ -356,8 +356,8 @@ function syncEffort() {
   $("effort").dataset.unsupported = allowed.length ? "" : "1";
   if (!savedForm) $("effort").disabled = !allowed.length;
   $("effortHint").textContent = allowed.length
-    ? "Viši effort = više razmišljanja i veća potrošnja."
-    : "Ovaj model ne podržava effort; bot radi sa podrazumevanim razmišljanjem.";
+    ? "Higher effort = more thinking and higher cost."
+    : "This model does not support effort; the bot uses its default thinking.";
 }
 const MODEL_ALIASES = {haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5"};
 let savedForm = null;
