@@ -1,6 +1,6 @@
 ---
 name: MedsTime
-projectPath: /Users/vladimir/Projects/med-mate-ios/MedsTime.xcodeproj
+projectPath: /Users/vladimir/Projects/medstime-ios/MedsTime.xcodeproj
 scheme: MedsTime
 configuration: Debug
 bundleId: com.violetsoft.MedMate
