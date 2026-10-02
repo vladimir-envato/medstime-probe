@@ -1,40 +1,40 @@
 <!doctype html>
-<html lang="sr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Istorija nalaza · MedsTime Probe</title>
+<title>Finding history · MedsTime Probe</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header>
   <h1>MedsTime Probe</h1>
-  <span class="sub">Bot u iOS simulatoru</span>
-  <nav><a href="/">Runovi</a><a href="/history" class="active">Istorija nalaza</a></nav>
+  <span class="sub">Bot in the iOS Simulator</span>
+  <nav><a href="/">Runs</a><a href="/history" class="active">Finding history</a></nav>
 </header>
 <main class="history">
   <section class="panel sticky">
-    <h2>Filteri</h2>
-    <label>Težina</label>
+    <h2>Filters</h2>
+    <label>Severity</label>
     <div class="chips" id="sevChips"></div>
-    <label for="app">Aplikacija</label>
+    <label for="app">App</label>
     <select id="app"></select>
     <label for="scenario">Scenario</label>
     <select id="scenario"></select>
-    <label for="q">Pretraga</label>
-    <input id="q" type="search" placeholder="Naslov, ekran, opis…">
-    <label class="check"><input type="checkbox" id="hideBot" checked> Sakrij greške samog bota</label>
-    <div class="hint">Nalazi sa ekrana „(run)" su problemi bota (npr. nije vratio rezultat), ne aplikacije.</div>
+    <label for="q">Search</label>
+    <input id="q" type="search" placeholder="Title, screen, description…">
+    <label class="check"><input type="checkbox" id="hideBot" checked> Hide the bot's own failures</label>
+    <div class="hint">Findings on screen "(run)" are problems with the bot (for example, it returned no result), not with the app.</div>
   </section>
 
   <section class="panel">
-    <h2>Nalazi <span class="muted" id="count"></span></h2>
-    <div class="flist" id="list"><div class="empty">Učitavanje…</div></div>
+    <h2>Findings <span class="muted" id="count"></span></h2>
+    <div class="flist" id="list"><div class="empty">Loading…</div></div>
   </section>
 
   <section class="panel detail sticky" id="detail">
-    <div class="empty">Izaberi nalaz sa liste.</div>
+    <div class="empty">Pick a finding from the list.</div>
   </section>
 </main>
 
@@ -65,21 +65,21 @@ function base() {
 
 function render() {
   options($("scenario"), [...new Set(all.filter(f => !$("app").value || f.app === $("app").value)
-    .map(f => f.scenario))].sort(), "Svi scenariji");
+    .map(f => f.scenario))].sort(), "All scenarios");
   const rows = base();
   const counts = Object.fromEntries(SEVERITY.map(s => [s, rows.filter(f => f.severity === s).length]));
-  $("sevChips").innerHTML = [["all", `Svi ${rows.length}`], ...SEVERITY.map(s => [s, `${s} ${counts[s]}`])]
+  $("sevChips").innerHTML = [["all", `All ${rows.length}`], ...SEVERITY.map(s => [s, `${s} ${counts[s]}`])]
     .map(([s, label]) => `<button class="chip sev-${s}${severity === s ? " on" : ""}" data-sev="${s}">${label}</button>`).join("");
   $("sevChips").querySelectorAll("button").forEach(b => b.onclick = () => { severity = b.dataset.sev; render(); });
 
   const shown = severity === "all" ? rows : rows.filter(f => f.severity === severity);
-  $("count").textContent = `${shown.length} od ${all.length}`;
+  $("count").textContent = `${shown.length} of ${all.length}`;
   $("list").innerHTML = shown.map(f =>
     `<button class="frow${f.id === selected ? " sel" : ""}" data-id="${esc(f.id)}">
        <span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span>
        <div class="ft">${esc(f.title)}</div>
        <div class="fm">${esc(f.app)} · ${esc(f.scenario)} · ${esc(f.screen)} · ${esc(when(f.start))}</div>
-     </button>`).join("") || `<div class="empty">Nema nalaza za ove filtere.</div>`;
+     </button>`).join("") || `<div class="empty">No findings match these filters.</div>`;
   $("list").querySelectorAll(".frow").forEach(b => b.onclick = () => select(b.dataset.id));
 }
 
@@ -94,23 +94,23 @@ async function select(id) {
   $("detail").innerHTML = `
     <span class="sev sev-${esc(f.severity)}">${esc(f.severity)}</span>
     <h3>${esc(f.title)}</h3>
-    <div class="muted">${esc(f.app)} · ${esc(f.scenario)} · ekran ${esc(f.screen)} · korak ${esc(f.step)}</div>
-    <div class="muted">${esc(when(f.start))} · model ${esc((f.model || "haiku").replace("claude-", ""))} · ishod runa: ${esc(f.outcome)}</div>
+    <div class="muted">${esc(f.app)} · ${esc(f.scenario)} · screen ${esc(f.screen)} · step ${esc(f.step)}</div>
+    <div class="muted">${esc(when(f.start))} · model ${esc((f.model || "haiku").replace("claude-", ""))} · run outcome: ${esc(f.outcome)}</div>
     <div class="body">${marked.parse(f.details || "")}</div>
-    ${shot ? `<a href="${shot}" target="_blank"><img class="shot" src="${shot}" alt="Screenshot nalaza"></a>` : `<div class="muted">Nema screenshota.</div>`}
-    <h2 style="margin-top:16px">Koraci do nalaza</h2>
-    <div class="scroll" id="steps"><div class="empty">Učitavanje…</div></div>
-    <a class="btnlink" href="/?run=${run}">Otvori izveštaj runa →</a>`;
+    ${shot ? `<a href="${shot}" target="_blank"><img class="shot" src="${shot}" alt="Finding screenshot"></a>` : `<div class="muted">No screenshot.</div>`}
+    <h2 style="margin-top:16px">Steps to the finding</h2>
+    <div class="scroll" id="steps"><div class="empty">Loading…</div></div>
+    <a class="btnlink" href="/?run=${run}">Open the run report →</a>`;
   if (innerWidth <= 900) $("detail").scrollIntoView({behavior: "smooth"});
 
   const res = await fetch(`/runs/${run}/steps.jsonl`);
   const steps = res.ok ? (await res.text()).split("\n").filter(Boolean).map(l => JSON.parse(l)) : [];
   const near = steps.filter(s => s.step <= f.step && s.step > f.step - 6);
   if (selected !== id) return;
-  $("steps").innerHTML = near.length ? `<table><thead><tr><th>#</th><th>Ekran</th><th>Akcija</th><th>Cilj</th><th>Rezultat</th></tr></thead><tbody>` +
+  $("steps").innerHTML = near.length ? `<table><thead><tr><th>#</th><th>Screen</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody>` +
     near.map(s => `<tr class="${s.step === f.step ? "hit" : ""}"><td>${s.step}</td><td>${esc(s.screen)}</td><td>${esc(s.action)}</td>
       <td>${esc(s.target)}</td><td class="r-${esc(s.result)}">${esc(s.result)}</td></tr>`).join("") + `</tbody></table>`
-    : `<div class="empty">Nema zabeleženih koraka.</div>`;
+    : `<div class="empty">No recorded steps.</div>`;
 }
 
 ["app", "scenario", "hideBot"].forEach(id => $(id).onchange = render);
@@ -118,7 +118,7 @@ $("q").oninput = render;
 
 fetch("/api/findings").then(r => r.json()).then(data => {
   all = data.findings;
-  options($("app"), [...new Set(all.map(f => f.app))].sort(), "Sve aplikacije");
+  options($("app"), [...new Set(all.map(f => f.app))].sort(), "All apps");
   render();
   const id = decodeURIComponent(location.hash.slice(1));
   if (id && all.some(f => f.id === id)) select(id);

@@ -53,7 +53,7 @@ show grey until then. A step with a finding links to its description and
 screenshot. When the run ends, the report appears below; the last 5 runs
 are listed on the left, with a count of the rest in `runs/`.
 
-**Istorija nalaza** (`/history`) lists every finding from every run, filterable
+**Finding history** (`/history`) lists every finding from every run, filterable
 by severity, app, scenario, and text, with the bot's own failures hidden by
 default. Selecting one shows its details, screenshot, the steps that led to it,
 and a link to its run's report. The server listens on localhost only.
