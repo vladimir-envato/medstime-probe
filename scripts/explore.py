@@ -431,6 +431,14 @@ class Live:
 
     def handle_codex(self, event):
         item = event.get("item") or {}
+        if event.get("type") == "thread.started":
+            self.codex_thread = event.get("thread_id")
+        elif event.get("type") == "item.started" and item.get("type") == "mcp_tool_call":
+            # codex exec --json reports usage only when the turn ends; its session log has a
+            # running total after every model call.
+            usage = self.codex_log_usage()
+            if usage:
+                self.run.live["tokens"] = codex_usage(usage)
         if event.get("type") == "turn.completed":
             self.run.live["tokens"] = codex_usage(event.get("usage") or {})
         elif item.get("type") == "agent_message" and event.get("type") == "item.completed":
@@ -444,6 +452,25 @@ class Live:
                 self.labels[ref] = label or role
             return
         self.run.update()
+
+    def codex_log_usage(self):
+        """Latest total_token_usage in this segment's Codex session log (~/.codex/sessions)."""
+        thread = getattr(self, "codex_thread", None)
+        if not thread:
+            return None
+        if not getattr(self, "codex_log", None):
+            found = sorted((Path.home() / ".codex" / "sessions").glob(f"*/*/*/rollout-*{thread}.jsonl"))
+            if not found:
+                return None
+            self.codex_log = found[-1]
+        usage = None
+        for line in self.codex_log.read_text().splitlines():
+            if '"token_count"' in line:
+                try:
+                    usage = json.loads(line)["payload"]["info"]["total_token_usage"]
+                except (ValueError, KeyError, TypeError):
+                    continue
+        return usage
 
     def handle(self, event):
         message = event.get("message")
