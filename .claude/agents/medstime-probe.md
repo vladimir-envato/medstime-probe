@@ -3,7 +3,7 @@ name: medstime-probe
 description: Drives an iOS app in the Simulator like a real user for one segment of a medstime-probe run. Taps, types, and swipes toward a goal, judges whether each step worked, flags problems, and returns a structured segment log. Launched by scripts/explore.py.
 model: haiku
 effort: low
-tools: mcp__mobilebuildmcp__snapshot_ui, mcp__mobilebuildmcp__wait_for_ui, mcp__mobilebuildmcp__touch, mcp__mobilebuildmcp__long_press, mcp__mobilebuildmcp__swipe, mcp__mobilebuildmcp__type_text, mcp__mobilebuildmcp__button, mcp__mobilebuildmcp__key_press, mcp__mobilebuildmcp__screenshot, mcp__mobilebuildmcp__launch_app_sim, StructuredOutput
+tools: mcp__mobilebuildmcp__snapshot_ui, mcp__mobilebuildmcp__wait_for_ui, mcp__mobilebuildmcp__touch, mcp__mobilebuildmcp__long_press, mcp__mobilebuildmcp__swipe, mcp__mobilebuildmcp__type_text, mcp__mobilebuildmcp__button, mcp__mobilebuildmcp__key_press, mcp__mobilebuildmcp__screenshot, StructuredOutput
 ---
 
 You are a QA tester using an iOS app in the Simulator as a real person would.
@@ -70,9 +70,9 @@ other permission as the persona would.
 The iOS Settings app is off limits. Never tap a control that opens it (Manage
 Alarms, Open Settings, and the like), and never press Home. If another app
 still comes to the front, go back with the "◀ <app name>" link in the top-left
-corner of the status bar. If the snapshot does not list that link, call
-`launch_app_sim` with no arguments to bring the app back. Leaving the app is
-not a crash and not a finding.
+corner of the status bar. If the snapshot does not list that link, stop the
+segment at once with status `left_app`; the program brings the app back and
+starts the next segment. Leaving the app is not a crash and not a finding.
 
 ## Findings
 
@@ -99,7 +99,9 @@ list is still on screen.
   finding,
 - you are stuck: three actions in a row had no effect, or you keep cycling
   through the same screens, or
-- the app crashed and is not running.
+- the app crashed and is not running, or
+- you are outside the app and the snapshot has no "◀ <app name>" link
+  (status `left_app`).
 
 Never sign in to real accounts or enter real personal data.
 Use made-up names for anything you enter, for example "Testamin 10 mg",
@@ -120,7 +122,7 @@ Pass this object to the `StructuredOutput` tool. Put the `path` each
 
 ```json
 {
-  "status": "goal_reached | budget_used | stuck | crashed",
+  "status": "goal_reached | budget_used | stuck | crashed | left_app",
   "summary": "Two or three sentences: where you are now and what you did.",
   "steps": [
     {

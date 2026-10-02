@@ -7,7 +7,8 @@ bundleId: com.violetsoft.MedMate
 simulatorName: iPhone 17 Pro
 # Launch arguments for every run. -mock-store (DEBUG builds) makes purchases succeed without the
 # App Store, since the local StoreKit configuration only applies when Xcode launches the app.
-launchArgs: ["-mock-store"]
+# -hide-debug-tab (DEBUG builds) keeps the bot away from the Debug tab's tools.
+launchArgs: ["-mock-store", "-hide-debug-tab"]
 # UserDefaults that a scenario with skipOnboarding: true writes after install, before launch.
 skipOnboardingDefaults: {"onboarding.finished": true}
 # Optional: pin an exact simulator by UDID (`xcrun simctl list devices`).

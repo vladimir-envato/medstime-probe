@@ -54,7 +54,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -394,6 +394,14 @@ def skip_onboarding(m):
     path.parent.mkdir(parents=True, exist_ok=True)
     prefs = plistlib.loads(path.read_bytes()) if path.exists() else {}
     path.write_bytes(plistlib.dumps({**prefs, **m["onboardingDefaults"]}))
+
+
+def relaunch_app(run):
+    """Brings the app back to the front with its launch arguments after the bot left it."""
+    m = run.meta
+    run.update(message="Bringing the app back")
+    subprocess.run(["xcrun", "simctl", "launch", "--terminate-running-process", m["simulatorId"],
+                    m["bundleId"], *m["launchArgs"]], capture_output=True)
 
 
 class BuildFailed(Exception):
@@ -882,6 +890,7 @@ def main():
         sys.exit(1)
 
     status = "stuck"
+    relaunches = 0
     while len(run.steps) < run.meta["maxSteps"] and not stopped["flag"]:
         run.update("running", f"Segment {len(run.segments) + 1}")
         data, result = run_segment(run)
@@ -895,6 +904,14 @@ def main():
               f"total {len(run.steps)}/{run.meta['maxSteps']}", flush=True)
         if status in ("goal_reached", "stuck", "crashed"):
             break
+        if status == "left_app":
+            # The bot has no launch tool, so relaunches always carry the app's launch arguments.
+            relaunches = relaunches + 1 if run.segments[-1]["steps"] == 0 else 1
+            if relaunches > 2:
+                status = "stuck"
+                break
+            relaunch_app(run)
+            continue
         if run.segments[-1]["steps"] == 0:
             status = "stuck"
             break

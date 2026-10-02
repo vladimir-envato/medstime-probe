@@ -156,8 +156,12 @@ to a model.
 - **Permissions**: the bot always allows notifications and skips alarms.
 - **Settings is off limits**: the bot never opens the iOS Settings app or
   presses Home. If another app comes to the front anyway, it taps "◀ <app>"
-  in the status bar, or relaunches the app with `launch_app_sim` when the
-  snapshot does not list that link.
+  in the status bar. When the snapshot does not list that link, it ends the
+  segment with status `left_app`, and `explore.py` relaunches the app with its
+  launch arguments and starts the next segment (after two such relaunches in a
+  row with no steps, the run ends as stuck). The bot has no launch tool, so the
+  app always runs with `app.md`'s `launchArgs` (`-mock-store`, `-hide-debug-tab`):
+  no Debug tab, and purchases through the mock store.
 
 ### Cost
 

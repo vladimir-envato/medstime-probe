@@ -13,7 +13,8 @@
         "goal_reached",
         "budget_used",
         "stuck",
-        "crashed"
+        "crashed",
+        "left_app"
       ]
     },
     "summary": {
