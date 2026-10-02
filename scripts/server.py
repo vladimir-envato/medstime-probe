@@ -72,7 +72,7 @@ def runs_list():
         if status:
             out.append({k: status.get(k) for k in
                         ("runDir", "app", "scenario", "state", "message", "start", "steps", "maxSteps",
-                         "findings", "costUSD")})
+                         "findings", "costUSD", "tokens")})
     return out[:50]
 
 
@@ -108,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"running": running(), "status": status})
         if path == "/api/runs":
             return self.send(200, {"runs": runs_list()})
-        match = re.match(r"^/runs/([A-Za-z0-9_-]+)/(report\.md|status\.json|live\.jpg|screenshots/[A-Za-z0-9_.-]+)$", path)
+        match = re.match(r"^/runs/([A-Za-z0-9_-]+)/(report\.md|status\.json|screenshots/[A-Za-z0-9_.-]+)$", path)
         if match:
             return self.file(RUNS / match.group(1) / match.group(2))
         self.send(404, {"error": "not found"})

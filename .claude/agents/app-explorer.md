@@ -44,12 +44,11 @@ steps or summarize at the end; everything goes in the result.
    - `success`: the screen changed the way you expected.
    - `no_effect`: nothing happened.
    - `unexpected`: something else happened (wrong screen, error, data lost).
-5. Take a `screenshot` (returnFormat `path`) only when:
-   - a meaningful action succeeded (something saved, a flow finished, a new
-     section reached), or
-   - something looks wrong: no effect, unexpected result, error text, empty
-     or blank screen, dead end, clipped or overlapping text, or a crash
-     (the app disappears and the home screen shows).
+5. Take a `screenshot` (returnFormat `path`) only when something looks
+   wrong and you will report it as a finding: no effect after a retry, an
+   unexpected result, error text, an empty or blank screen, a dead end,
+   clipped or overlapping text, or a crash (the app disappears and the home
+   screen shows). Never take one just because a step worked.
 
 A step is one action on the app (tap, type, swipe, and so on); record a `touch` as `tap`. Snapshots,
 waits, and screenshots are not steps and do not go in `steps`; attach a
@@ -68,6 +67,12 @@ Flag anything a real user would stumble on. Severity:
 
 Report what you saw, not guesses about the code.
 
+Every finding needs proof: take a `screenshot` while the problem is on screen,
+before you move on, and put its path in the finding. No screenshot, no
+finding. Look at the screenshot before you report: a native iOS control
+(date or time picker, alert, share sheet, keyboard) that the snapshot does not
+list is still on screen.
+
 ## Stop the segment when
 
 - the goal is reached,
@@ -82,7 +87,11 @@ Report what you saw, not guesses about the code.
 Never buy anything, sign in to real accounts, or enter real personal data.
 Use made-up names for anything you enter, for example "Testamin 10 mg",
 never a real medication.
-On a paywall, close it unless the goal says otherwise.
+On a paywall, close it unless the goal says otherwise: tap only Close, X,
+"Not now", or a similar dismiss control. Never tap Continue, Subscribe, Buy,
+Start trial, Restore Purchases, or a plan; on a paywall those start a
+purchase. If a purchase or Apple Account sign-in prompt still appears, cancel
+it.
 
 ## Reply
 
@@ -111,7 +120,7 @@ Pass this object to the `StructuredOutput` tool. Put the `path` each
       "title": "One line",
       "details": "What you did, what you expected, what happened",
       "step": "Number of the step in this reply where you saw it, starting at 1",
-      "screenshot": "/path/from/screenshot or null"
+      "screenshot": "/path/from/screenshot (required)"
     }
   ]
 }

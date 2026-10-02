@@ -28,12 +28,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
-SEGMENT_STEPS = 20
-MIN_SEGMENT_STEPS = 5
+SEGMENT_STEPS = 10
+MIN_SEGMENT_STEPS = 3
 SEVERITY = ["crash", "bug", "ux", "minor"]
+# Token counts reported by claude -p, by kind.
+TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
+               "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Before each action, call wait_for_ui with predicate "settled" if the screen may still be moving (after launch, a touch, a swipe, a sheet, or an alert). Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall tap only Close, X, or Not now; never Continue, Subscribe, Buy, Start trial, Restore, or a plan. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -148,6 +151,7 @@ class Run:
         self.write_json("run.json", self.meta)
         self.steps, self.findings, self.segments = [], [], []
         self.cost = {}
+        self.tokens = {}
         self.live = None
         self.lock = threading.Lock()
         self.state = "preparing"
@@ -168,6 +172,12 @@ class Run:
     def add_cost(self, result):
         for model, usage in (result.get("modelUsage") or {}).items():
             self.cost[model] = self.cost.get(model, 0) + usage.get("costUSD", 0)
+            tokens = self.tokens.setdefault(model, dict.fromkeys(TOKEN_KINDS, 0))
+            for kind, key in TOKEN_KINDS.items():
+                tokens[kind] += usage.get(key, 0)
+
+    def token_totals(self):
+        return {kind: sum(t[kind] for t in self.tokens.values()) for kind in TOKEN_KINDS}
 
     def update(self, state=None, message=None):
         with self.lock:
@@ -195,6 +205,8 @@ class Run:
             "findings": counts,
             "costUSD": round(sum(self.cost.values()), 4),
             "costByModel": {k: round(v, 4) for k, v in self.cost.items()},
+            "tokens": self.token_totals(),
+            "tokensByModel": self.tokens,
             "segmentSummaries": [s["summary"] for s in self.segments],
             "recentSteps": self.steps[-12:],
             "recentFindings": self.findings[-10:],
@@ -271,40 +283,38 @@ class BuildFailed(Exception):
 TOOL_NAMES = {"snapshot_ui": "look", "wait_for_ui": "wait", "tap": "tap", "touch": "tap", "batch": "tap (batch)",
               "long_press": "long press", "swipe": "swipe", "type_text": "type", "button": "button",
               "key_press": "key", "screenshot": "screenshot", "StructuredOutput": "report"}
+# Tools that act on the app; each call is one step.
+APP_ACTIONS = {"touch", "tap", "type_text", "swipe", "long_press", "button", "key_press"}
 TARGET = re.compile(r"(e\d+)\|[^|]*\|([^|]*)\|([^|]*)\|")
 
 
 class Live:
-    """Turns a claude -p stream into live actions in status.json, and screenshots
-    the simulator every few seconds for the web UI."""
+    """Turns a claude -p stream into live actions in status.json."""
 
     def __init__(self, run, segment):
         self.run, self.segment = run, segment
         self.labels = {}
-        self.done = threading.Event()
-        run.live = {"segment": segment, "toolCalls": 0, "actions": [],
-                    "screenshot": (run.live or {}).get("screenshot")}
+        self.usage = {}
+        run.live = {"segment": segment, "toolCalls": 0, "steps": 0, "actions": [],
+                    "tokens": dict.fromkeys(TOKEN_KINDS, 0)}
         run.update()
-        threading.Thread(target=self.capture, daemon=True).start()
-
-    def capture(self):
-        target, tmp = self.run.dir / "live.jpg", self.run.dir / "live.tmp.jpg"
-        while not self.done.wait(3):
-            shot = subprocess.run(["xcrun", "simctl", "io", self.run.meta["simulatorId"], "screenshot",
-                                   "--type=jpeg", str(tmp)], capture_output=True)
-            if shot.returncode == 0:
-                tmp.replace(target)
-                self.run.live["screenshot"] = f"live.jpg?t={int(datetime.now().timestamp())}"
-                self.run.update()
-
-    def stop(self):
-        self.done.set()
 
     def handle(self, event):
         message = event.get("message")
         if not isinstance(message, dict) or not isinstance(message.get("content"), list):
             return
         changed = False
+        usage = message.get("usage")
+        if event.get("type") == "assistant" and usage and message.get("id"):
+            # A message streams as several events with the same id; keep the latest usage.
+            self.usage[message["id"]] = usage
+            self.run.live["tokens"] = {
+                "input": sum(u.get("input_tokens", 0) for u in self.usage.values()),
+                "cacheRead": sum(u.get("cache_read_input_tokens", 0) for u in self.usage.values()),
+                "cacheWrite": sum(u.get("cache_creation_input_tokens", 0) for u in self.usage.values()),
+                "output": sum(u.get("output_tokens", 0) for u in self.usage.values()),
+            }
+            changed = True
         for block in message["content"]:
             if block.get("type") == "tool_use":
                 self.action(block)
@@ -332,6 +342,8 @@ class Live:
         elif name == "batch":
             detail = ", ".join(self.labels.get(s.get("elementRef"), s.get("elementRef", "")) for s in args.get("steps", []))
         self.run.live["toolCalls"] += 1
+        if name in APP_ACTIONS:
+            self.run.live["steps"] += 1
         self.run.live["actions"] = (self.run.live["actions"] + [{
             "time": now().strftime("%H:%M:%S"), "tool": TOOL_NAMES.get(name, name), "detail": detail,
         }])[-15:]
@@ -382,7 +394,6 @@ def run_segment(run):
             else:
                 live.handle(event)
         proc.wait()
-    live.stop()
     if result is None:
         result = {"is_error": True, "result": (run.dir / f"segment-{number}.jsonl").read_text()[-2000:]}
     run.add_cost(result)
@@ -540,6 +551,19 @@ def ask_sonnet(run):
     return result.get("structured_output")
 
 
+def fmt_tokens(n):
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def token_rows(run):
+    rows = []
+    for model, t in [*run.tokens.items(), ("Total", run.token_totals())]:
+        rows.append(f"| Tokens, {model} | {fmt_tokens(sum(t.values()))} (input {fmt_tokens(t['input'])}, "
+                    f"cache read {fmt_tokens(t['cacheRead'])}, cache write {fmt_tokens(t['cacheWrite'])}, "
+                    f"output {fmt_tokens(t['output'])}) |")
+    return rows
+
+
 def write_report(run, outcome, summary, analysis=None):
     seconds = int((now() - run.start).total_seconds())
     offset = run.start.strftime("%z")
@@ -569,22 +593,30 @@ def write_report(run, outcome, summary, analysis=None):
         f"| Findings | crash {counts['crash']}, bug {counts['bug']}, ux {counts['ux']}, minor {counts['minor']} |",
         f"| Screenshots | {len(shots)} |",
         f"| Cost | ${cost:.3f} ({by_model}) |",
+        *token_rows(run),
         "", "## Findings",
     ]
     ordered = sorted(run.findings, key=lambda f: SEVERITY.index(f["severity"]) if f.get("severity") in SEVERITY else 99)
+    # Number findings so the path table can link each step to its findings.
+    by_step = {}
+    for number, f in enumerate(ordered, 1):
+        by_step.setdefault(f.get("step"), []).append((number, f))
     if not ordered:
         lines.append("None.")
-    for f in ordered:
-        lines += ["", f"### {f.get('severity')}: {f.get('title')}",
+    for number, f in enumerate(ordered, 1):
+        lines += ["", f'<a id="finding-{number}"></a>',
+                  f"### {number}. {f.get('severity')}: {f.get('title')}",
                   f"Screen: {f.get('screen')} · Step {f.get('step')}", "", f.get("details", "")]
         if f.get("screenshot"):
             lines += ["", f"![]({f['screenshot']})"]
     lines += ["", "## Path", "| # | Screen | Action | Target | Result |", "|---|---|---|---|---|"]
     for s in run.steps:
+        result = cell(s.get("result"))
+        links = [f"[{f.get('severity', '').upper()} #{n}](#finding-{n})" for n, f in by_step.get(s["step"], [])]
+        if links:
+            result += " · " + ", ".join(links)
         lines.append(f"| {s['step']} | {cell(s.get('screen'))} | {cell(s.get('action'))} | "
-                     f"{cell(s.get('target'))} | {cell(s.get('result'))} |")
-    if shots:
-        lines += ["", f"![]({shots[-1].relative_to(run.dir)})"]
+                     f"{cell(s.get('target'))} | {result} |")
     (run.dir / "report.md").write_text("\n".join(lines) + "\n")
 
 
@@ -623,6 +655,8 @@ def main():
         status = record_segment(run, data, result)
         if run.live:
             run.live["actions"] = []
+            run.live["steps"] = 0
+            run.live["tokens"] = dict.fromkeys(TOKEN_KINDS, 0)
         run.update()
         print(f"Segment {len(run.segments)}: {status}, {run.segments[-1]['steps']} steps, "
               f"total {len(run.steps)}/{run.meta['maxSteps']}", flush=True)

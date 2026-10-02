@@ -28,9 +28,12 @@ python3 scripts/server.py
 
 Open http://127.0.0.1:8765. Pick an app and a scenario, set the number of
 steps, optionally write your own goal, and press Start. While the run goes, the
-page shows progress, cost, the bot's latest actions, a simulator screenshot
-refreshed every 3 seconds, steps, and findings. When it ends, the report
-appears below; earlier runs are listed on the left. The server listens on
+page shows progress, cost, tokens, the bot's latest actions, steps, and
+findings; watch the Simulator itself (or Device Hub) to see the screen. Steps
+and tokens count up live; cost arrives when a segment ends, so cost and tokens
+show grey until then. A step with a finding links to its description and
+screenshot. When the run ends, the report appears below; earlier runs are
+listed on the left. The server listens on
 localhost only.
 
 ### Terminal
@@ -56,13 +59,13 @@ Each run writes to `runs/<date>-<app>-<scenario>/`:
 
 | File | Contents |
 |---|---|
-| `report.md` | Outcome, cost, summary, analysis, stats, findings with screenshots, and the path the bot took |
+| `report.md` | Outcome, cost and tokens, summary, analysis, stats, findings with screenshots, and the path the bot took (steps with a finding link to it) |
 | `steps.jsonl` | One line per action: screen, action, target, intent, result, screenshot |
 | `findings.jsonl` | One line per problem: severity, screen, title, details, step, screenshot |
 | `segments.jsonl` | One line per segment: status, summary, steps, cost |
 | `status.json` | Live progress for the web UI (also copied to `runs/latest.json`) |
 | `run.json` | The resolved app config and scenario |
-| `screenshots/` | Screens after meaningful successes and at every suspicious moment |
+| `screenshots/` | One per finding, taken while the problem was on screen |
 | `segment-<n>.jsonl`, `report-model.json` | Raw Claude Code output, for debugging |
 
 `runs/` is not committed.
@@ -93,8 +96,9 @@ to a model.
   only see and touch the Simulator; it has no shell or file access.
 - **Segments**: every segment is a fresh `claude -p` session that gets the goal
   and a short summary of the earlier segments, so step 40 is as fast and cheap
-  as step 1. Segments have 20 steps; a tail under 5 steps joins the previous
-  segment (`SEGMENT_STEPS` and `MIN_SEGMENT_STEPS` in `explore.py`).
+  as step 1. Segments have 10 steps; a tail under 3 steps joins the previous
+  segment (`SEGMENT_STEPS` and `MIN_SEGMENT_STEPS` in `explore.py`). Longer
+  segments did not cost less: they read less cache but wrote more output.
 - **Structured result**: the bot returns its segment log through the
   `StructuredOutput` tool, which Claude Code checks against
   `scripts/segment_schema.json`. If Haiku writes the JSON as text instead,
@@ -106,12 +110,17 @@ to a model.
 - **Taps**: the bot taps with a 0.15 s touch, and focuses a text field and
   checks for the keyboard before typing. Short taps were often ignored, and
   typing into an unfocused field is silently lost.
+- **Screenshots** only when something looks wrong: every finding must carry
+  one (the schema rejects a finding without it), and nothing else gets one.
+- **Paywalls**: the bot may only dismiss them; Continue, Subscribe, and the
+  like start a purchase.
 
 ### Cost
 
 On a Claude subscription the runs count against your usage; the report shows
-the equivalent API list price. Measured so far: onboarding about $0.09, a
-20-step autonomous run about $0.28. The bot is most of it.
+the equivalent API list price, plus token counts by model and kind. Measured
+so far: onboarding about $0.09-0.11, a 20-step autonomous run about $0.22. The
+bot is most of it, and output tokens weigh far more than cache reads.
 
 ### Bot effort
 

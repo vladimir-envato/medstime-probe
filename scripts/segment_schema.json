@@ -108,10 +108,8 @@
             "minimum": 1
           },
           "screenshot": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "minLength": 1
           }
         }
       }

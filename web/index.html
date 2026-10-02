@@ -66,6 +66,7 @@
   .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v.provisional { color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
@@ -86,10 +87,12 @@
   .report table { margin: 8px 0; }
   .report h1 { font-size: 20px; } .report h2 { font-size: 14px; text-transform: none; color: var(--text); margin-top: 20px; }
   .empty { color: var(--muted); font-size: 13px; }
-  .live { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; }
-  @media (max-width: 600px) { .live { grid-template-columns: 1fr; } }
-  .shot img { width: 100%; border-radius: 14px; border: 1px solid var(--line); display: block; }
-  .shot img:not([src]) { display: none; }
+  .tokens { font-size: 12px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .tokens div + div { margin-top: 2px; }
+  a.flink { color: var(--bad); font-weight: 700; text-decoration: none; margin-left: 6px; font-size: 11px; text-transform: uppercase; }
+  a.flink:hover { text-decoration: underline; }
+  .finding img { max-width: 220px; border-radius: 10px; border: 1px solid var(--line); display: block; margin-top: 8px; cursor: zoom-in; }
+  .finding.flash, .report .flash { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
   .feed { list-style: none; margin: 0; padding: 0; font-size: 13px; }
   .feed li { display: grid; grid-template-columns: 64px 90px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
   .feed li:first-child { font-weight: 600; }
@@ -148,16 +151,15 @@
         <div class="stat"><div class="v" id="sSegments">0</div><div class="k">Segmenti</div></div>
         <div class="stat"><div class="v" id="sFindings">0</div><div class="k">Nalazi</div></div>
         <div class="stat"><div class="v" id="sCost">$0.00</div><div class="k">Trošak</div></div>
+        <div class="stat"><div class="v" id="sTokens">0</div><div class="k">Tokeni</div></div>
         <div class="stat"><div class="v" id="sTime">0:00</div><div class="k">Trajanje</div></div>
       </div>
+      <div class="tokens muted" id="tokenDetail"></div>
     </section>
 
     <section class="panel" id="livePanel" hidden>
       <h2>Uživo <span class="muted" id="liveMeta"></span></h2>
-      <div class="live">
-        <div class="shot"><img id="liveShot" alt="Trenutni ekran simulatora"><div class="empty" id="liveShotEmpty">Još nema screenshota.</div></div>
-        <ul class="feed" id="liveFeed"></ul>
-      </div>
+      <ul class="feed" id="liveFeed"></ul>
     </section>
 
     <section class="panel">
@@ -236,14 +238,31 @@ function renderStatus(data) {
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
   $("runTitle").textContent = `${st.app} · ${st.scenario}`;
   $("message").textContent = st.message || "";
-  const pct = Math.min(100, 100 * st.steps / st.maxSteps);
+  // Recorded steps come from the bot's segment report; during a segment, add
+  // the app actions seen live so the count moves with every tap.
+  const liveSteps = !finished && st.live ? (st.live.steps || 0) : 0;
+  const steps = Math.min(st.maxSteps, st.steps + liveSteps);
+  const pct = Math.min(100, 100 * steps / st.maxSteps);
   $("progress").style.width = pct + "%";
-  $("progressText").textContent = `${st.steps} / ${st.maxSteps} koraka`;
+  $("progressText").textContent = `${steps} / ${st.maxSteps} koraka` +
+    (liveSteps ? ` · ${liveSteps} u segmentu ${st.live.segment} (uživo)` : "");
   const f = st.findings || {};
-  $("sSteps").textContent = st.steps;
+  $("sSteps").textContent = steps;
   $("sSegments").textContent = st.segments;
   $("sFindings").textContent = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
   $("sCost").textContent = "$" + (st.costUSD || 0).toFixed(3);
+  const tk = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n || 0);
+  const sum = t => (t.input || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0) + (t.output || 0);
+  // Recorded tokens come from finished segments; add the running segment's live count.
+  const liveTokens = !finished && st.live ? sum(st.live.tokens || {}) : 0;
+  $("sTokens").textContent = tk(sum(st.tokens || {}) + liveTokens);
+  // While a segment runs, cost lags and tokens are provisional: show both grey.
+  const provisional = !finished && isRunning && !!st.live;
+  $("sTokens").classList.toggle("provisional", provisional);
+  $("sCost").classList.toggle("provisional", provisional);
+  $("tokenDetail").innerHTML = Object.entries(st.tokensByModel || {}).map(([m, t]) =>
+    `<div>${esc(m)}: ${tk(sum(t))} · ulaz ${tk(t.input)} · keš čitanje ${tk(t.cacheRead)} · keš upis ${tk(t.cacheWrite)} · izlaz ${tk(t.output)} · $${((st.costByModel || {})[m] || 0).toFixed(3)}</div>`
+  ).join("") + (liveTokens ? `<div>Segment ${st.live.segment} u toku: ${tk(liveTokens)} tokena (izlaz ${tk(st.live.tokens.output)}); trošak stiže kad se segment završi.</div>` : "");
   $("sTime").textContent = duration(st.start, finished || !isRunning ? st.updated : null);
 
   const live = st.live;
@@ -253,23 +272,26 @@ function renderStatus(data) {
     $("liveFeed").innerHTML = (live.actions || []).slice().reverse().map(a =>
       `<li><span class="time">${esc(a.time)}</span><span class="tool">${esc(a.tool)}</span><span class="detail">${esc(a.detail)}</span></li>`
     ).join("") || `<li><span></span><span></span><span class="empty">Čekam prvu akciju…</span></li>`;
-    const src = live.screenshot ? `/runs/${encodeURIComponent(st.runDir)}/${live.screenshot}` : null;
-    if (src && $("liveShot").getAttribute("src") !== src) $("liveShot").setAttribute("src", src);
-    $("liveShotEmpty").hidden = !!src;
   }
 
   $("segs").innerHTML = (st.segmentSummaries || []).map(s => `<li>${esc(s)}</li>`).join("");
   $("segsEmpty").hidden = (st.segmentSummaries || []).length > 0;
 
+  const run = encodeURIComponent(st.runDir);
+  const findingsByStep = {};
+  (st.recentFindings || []).forEach((f, i) => (findingsByStep[f.step] ||= []).push({...f, i}));
   $("steps-body").innerHTML = (st.recentSteps || []).slice().reverse().map(s =>
     `<tr><td>${s.step}</td><td>${esc(s.screen)}</td><td>${esc(s.action)}</td><td>${esc(s.target)}</td>
-     <td class="r-${esc(s.result)}">${esc(s.result)}</td></tr>`).join("") ||
+     <td class="r-${esc(s.result)}">${esc(s.result)}${(findingsByStep[s.step] || []).map(f =>
+       `<a class="flink" href="#live-finding-${f.i}">${esc(f.severity)}</a>`).join("")}</td></tr>`).join("") ||
     `<tr><td colspan="5" class="empty">Još nema koraka.</td></tr>`;
 
-  $("findings").innerHTML = (st.recentFindings || []).map(x =>
-    `<div class="finding"><span class="sev sev-${esc(x.severity)}">${esc(x.severity)}</span>
+  $("findings").innerHTML = (st.recentFindings || []).map((x, i) =>
+    `<div class="finding" id="live-finding-${i}"><span class="sev sev-${esc(x.severity)}">${esc(x.severity)}</span>
      <strong>${esc(x.title)}</strong><div class="muted">${esc(x.screen)} · korak ${esc(x.step)}</div>
-     <div>${esc(x.details)}</div></div>`).join("") || `<div class="empty">Nema nalaza.</div>`;
+     <div>${esc(x.details)}</div>
+     ${x.screenshot ? `<a href="/runs/${run}/${esc(x.screenshot)}" target="_blank"><img src="/runs/${run}/${esc(x.screenshot)}" alt="Screenshot nalaza"></a>` : ""}</div>`
+  ).join("") || `<div class="empty">Nema nalaza.</div>`;
 
   if (finished && (st.runDir !== lastRunDir || st.state !== lastState)) {
     showReport(st.runDir);
@@ -299,13 +321,26 @@ async function loadRuns() {
     const f = r.findings || {};
     const n = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
     return `<a href="#" data-run="${esc(r.runDir)}"><div class="rt">${esc(r.app)} · ${esc(r.scenario)}</div>
-      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${r.steps}/${r.maxSteps} koraka · ${n} nalaza · $${(r.costUSD||0).toFixed(3)}</div></a>`;
+      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${r.steps}/${r.maxSteps} koraka · ${n} nalaza · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokena" : ""}</div></a>`;
   }).join("") || `<div class="empty">Nema runova.</div>`;
   $("runs").querySelectorAll("a").forEach(a => a.onclick = e => {
     e.preventDefault(); showReport(a.dataset.run);
     $("reportPanel").scrollIntoView({behavior: "smooth"});
   });
 }
+
+document.addEventListener("click", e => {
+  const a = e.target.closest('a[href^="#live-finding-"], a[href^="#finding-"]');
+  if (!a) return;
+  const target = document.getElementById(a.getAttribute("href").slice(1));
+  if (!target) return;
+  e.preventDefault();
+  // In the report the anchor is empty; highlight the heading after it.
+  const box = target.nextElementSibling && !target.textContent ? target.nextElementSibling : target;
+  box.scrollIntoView({behavior: "smooth", block: "center"});
+  box.classList.add("flash");
+  setTimeout(() => box.classList.remove("flash"), 1600);
+});
 
 async function poll() {
   try { renderStatus(await api("/api/status")); } catch (e) { /* server restarting */ }
