@@ -1,12 +1,14 @@
 ---
 name: Autonomous - Settings screen
 freshStart: true
+skipOnboarding: true
 maxSteps: 50
 ---
 
 ## Goal
 
-Get through onboarding (buy the subscription on the paywall), then open the app's Settings tab
+Onboarding is skipped: the app opens on the Schedule tab. If a paywall
+appears, buy the subscription. Open the app's Settings tab
 and stay inside it and the screens it opens for the whole run. Do not go to
 other tabs. Try every row, toggle, picker, and link, change values and change
 them back, and look for anything broken or inconsistent. Restore Purchases is

@@ -5,6 +5,8 @@ scheme: MedsTime
 configuration: Debug
 bundleId: com.violetsoft.MedMate
 simulatorName: iPhone 17 Pro
+# UserDefaults that a scenario with skipOnboarding: true writes after install, before launch.
+skipOnboardingDefaults: {"onboarding.finished": true}
 # Optional: pin an exact simulator by UDID (`xcrun simctl list devices`).
 # simulatorId:
 ---

@@ -173,6 +173,7 @@ Scenario front matter:
 | `freshStart` | `true` uninstalls the app first: no data, no permissions |
 | `maxSteps` | Step budget for the whole run |
 | `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]` |
+| `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 `Done when` for open-ended exploration.

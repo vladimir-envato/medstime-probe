@@ -82,6 +82,7 @@
       <textarea id="persona" rows="3"></textarea>
       <label>Cilj scenarija</label>
       <div class="hint" id="scenarioGoal" style="white-space: pre-wrap; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;"></div>
+      <div class="hint" id="scenarioSkip" hidden>Onboarding se preskače: aplikacija se posle sveže instalacije otvara pravo na Schedule.</div>
       <label for="goal">Prompt (opciono)</label>
       <textarea id="goal" rows="4" placeholder="Prazno = bot radi po cilju scenarija."></textarea>
       <div class="hint">Ako upišeš prompt, on zamenjuje cilj scenarija za ovaj run, i run nema fiksan kraj: bot istražuje dok ne potroši korake.</div>
@@ -181,6 +182,7 @@ function syncSteps() {
   const opt = $("scenario").selectedOptions[0];
   if (opt) $("steps").value = opt.dataset.steps;
   $("scenarioGoal").textContent = currentScenario()?.goal || "";
+  $("scenarioSkip").hidden = !currentScenario()?.skipOnboarding;
   $("personaPick").value = "";
   syncPersona();
 }
@@ -384,6 +386,7 @@ function unlockForm() {
   $("app").value = saved.app; fillScenarios();
   FORM_IDS.forEach(id => { $(id).disabled = false; if (id !== "app") $(id).value = saved[id]; });
   $("scenarioGoal").textContent = currentScenario()?.goal || "";
+  $("scenarioSkip").hidden = !currentScenario()?.skipOnboarding;
   syncEffort();
 }
 

@@ -1,12 +1,14 @@
 ---
 name: Autonomous - Add Medication flow
 freshStart: true
+skipOnboarding: true
 maxSteps: 50
 ---
 
 ## Goal
 
-Get through onboarding (buy the subscription on the paywall), then open Add
+Onboarding is skipped: the app opens on the Schedule tab. If a paywall
+appears, buy the subscription. Open Add
 Medication and stay inside its screens for the whole run. Never submit: do not
 tap the final Done or Save that creates the medication, and do not leave the
 flow through Close or Cancel. Move back and forth through the steps and try to

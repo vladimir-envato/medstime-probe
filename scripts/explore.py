@@ -200,6 +200,8 @@ class Run:
             "reportModel": args.report_model,
             "narrate": args.narrate,
             "freshStart": bool(meta.get("freshStart")),
+            "skipOnboarding": bool(meta.get("skipOnboarding")),
+            "onboardingDefaults": config.get("skipOnboardingDefaults", {}),
             "launchArgs": meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
             "projectPath": config["projectPath"],
@@ -368,8 +370,22 @@ def build_and_launch(run):
     if m["freshStart"]:
         subprocess.run(["xcrun", "simctl", "uninstall", udid, m["bundleId"]], capture_output=True)
     subprocess.run(["xcrun", "simctl", "install", udid, str(app)], check=True, capture_output=True)
+    if m["skipOnboarding"]:
+        skip_onboarding(m)
     subprocess.run(["xcrun", "simctl", "launch", "--terminate-running-process", udid, m["bundleId"],
                     *m["launchArgs"]], check=True, capture_output=True)
+
+
+def skip_onboarding(m):
+    """Marks onboarding finished in the app's UserDefaults before launch (app.md skipOnboardingDefaults)."""
+    if not m["onboardingDefaults"]:
+        raise SystemExit("skipOnboarding needs skipOnboardingDefaults in app.md")
+    subprocess.run(["xcrun", "simctl", "terminate", m["simulatorId"], m["bundleId"]], capture_output=True)
+    for key, value in m["onboardingDefaults"].items():
+        kind = "-bool" if isinstance(value, bool) else "-int" if isinstance(value, int) else "-string"
+        text = ("YES" if value else "NO") if isinstance(value, bool) else str(value)
+        subprocess.run(["xcrun", "simctl", "spawn", m["simulatorId"], "defaults", "write", m["bundleId"],
+                        key, kind, text], check=True, capture_output=True)
 
 
 class BuildFailed(Exception):

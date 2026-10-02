@@ -1,12 +1,14 @@
 ---
 name: Autonomous - Add, delete, archive medications
 freshStart: true
+skipOnboarding: true
 maxSteps: 60
 ---
 
 ## Goal
 
-Get through onboarding (buy the subscription on the paywall), then manage
+Onboarding is skipped: the app opens on the Schedule tab. If a paywall
+appears, buy the subscription. Manage
 medications through their whole life cycle, over and over:
 - add several medications with different forms, frequencies, and times,
 - delete some of them and check they are gone from the list and the schedule,
