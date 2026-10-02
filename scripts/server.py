@@ -28,7 +28,9 @@ MODELS = ("claude-haiku-4-5",
           "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
           "claude-opus-4-5",
           "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna",
-          "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5")
+          "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5",
+          # The same Claude models without extended thinking; explore.py strips the suffix.
+          "claude-haiku-4-5:no-thinking", "claude-sonnet-5-5:no-thinking", "claude-opus-5-5:no-thinking")
 EFFORTS = ("low", "medium")
 REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
 

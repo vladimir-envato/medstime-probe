@@ -65,6 +65,7 @@ python3 scripts/explore.py medstime onboarding
 python3 scripts/explore.py medstime autonomous --steps 40
 python3 scripts/explore.py medstime autonomous --steps 40 --goal "Add a medication, then edit it"
 python3 scripts/explore.py medstime autonomous --model gpt-6-sol --report-model gpt-6-sol
+python3 scripts/explore.py medstime autonomous-medication-lifecycle --model claude-sonnet-5-5:no-thinking
 ```
 
 `--steps` overrides the scenario's step budget. `--goal` replaces the
@@ -73,7 +74,9 @@ run out. `--persona` replaces the scenario's persona. `--model` runs the bot on
 another model (Haiku 4.5 by default; any `gpt-*` model goes through Codex), and
 `--effort` sets `low` or `medium`. `--report-model` picks who writes the report:
 `claude-sonnet-5-5` (default), `claude-opus-5-5`, or `gpt-6-sol`, always at low
-effort.
+effort. A Claude model with `:no-thinking` (`claude-haiku-4-5:no-thinking`,
+`claude-sonnet-5-5:no-thinking`, `claude-opus-5-5:no-thinking`) runs without extended
+thinking and without effort; the web UI lists them under "No thinking".
 
 ### Claude Code
 
@@ -194,7 +197,7 @@ Scenario front matter:
 | `freshStart` | `true` uninstalls the app first: no data, no permissions |
 | `maxSteps` | Step budget for the whole run |
 | `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account) |
-| `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as Autonomous - Fast random taps (`autonomous-fast`) |
+| `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as Autonomous - Fast random taps (`autonomous-fast`); a `:no-thinking` model does the same for one run |
 | `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out

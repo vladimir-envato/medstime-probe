@@ -47,6 +47,11 @@
           <option value="claude-opus-4-6">Opus 4.6</option>
           <option value="claude-opus-4-5">Opus 4.5</option>
         </optgroup>
+        <optgroup label="No thinking (faster, less careful)">
+          <option value="claude-haiku-4-5:no-thinking">Haiku 4.5 · no thinking</option>
+          <option value="claude-sonnet-5-5:no-thinking">Sonnet 5.5 · no thinking</option>
+          <option value="claude-opus-5-5:no-thinking">Opus 5.5 · no thinking</option>
+        </optgroup>
         <optgroup label="ChatGPT (Codex)">
           <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
           <option value="gpt-6-sol">GPT-6 Sol</option>
@@ -225,7 +230,7 @@ function renderStatus(data) {
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
   $("runTitle").textContent = `${st.app} · ${st.scenario}`;
   $("runSetup").textContent = [st.model && `Model: ${st.model.replace("claude-", "")}`,
-    st.effort && `Effort: ${st.effort}`, st.reportModel && `Report: ${st.reportModel.replace("claude-", "")}`, st.narrate && "Commentary: on", st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
+    st.effort && `Effort: ${st.effort}`, st.reportModel && `Report: ${st.reportModel.replace("claude-", "")}`, st.narrate && "Commentary: on", st.thinking === "off" && "Thinking: off", st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
   $("message").textContent = st.message || "";
   // Recorded steps come from the bot's segment report; during a segment, add
   // the app actions seen live so the count moves with every tap.
@@ -344,9 +349,10 @@ document.addEventListener("click", e => {
 // that run's settings and is locked; afterwards it gets back what was there.
 const FORM_IDS = ["app", "scenario", "steps", "stepsUp", "stepsDown", "model", "effort",
                   "reportModel", "narrate", "personaPick", "persona", "goal", "start"];
-// Effort levels each model accepts; Haiku 4.5 and Sonnet 4.5 have none.
+// Effort levels each model accepts; Haiku 4.5, Sonnet 4.5, and the no-thinking presets have none.
 const MODEL_EFFORTS = {
   "claude-haiku-4-5": [], "claude-sonnet-4-5": [], "claude-opus-4-5": ["low", "medium"],
+  "claude-haiku-4-5:no-thinking": [], "claude-sonnet-5-5:no-thinking": [], "claude-opus-5-5:no-thinking": [],
 };
 const ALL_EFFORTS = ["low", "medium"];
 function syncEffort() {
@@ -357,7 +363,9 @@ function syncEffort() {
   if (!savedForm) $("effort").disabled = !allowed.length;
   $("effortHint").textContent = allowed.length
     ? "Higher effort = more thinking and higher cost."
-    : "This model does not support effort; the bot uses its default thinking.";
+    : $("model").value.endsWith(":no-thinking")
+      ? "Thinking is off for this model, so effort does not apply."
+      : "This model does not support effort; the bot uses its default thinking.";
 }
 const MODEL_ALIASES = {haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5"};
 let savedForm = null;
@@ -369,7 +377,10 @@ function lockForm(st) {
     options.find(a => a.id === $("app").value)?.scenarios.find(s => s.name === st.scenario)?.id;
   if (scenarioId) { $("scenario").value = scenarioId; syncSteps(); }
   $("steps").value = st.maxSteps;
-  $("model").value = MODEL_ALIASES[st.model] || st.model || "claude-haiku-4-5";
+  const model = MODEL_ALIASES[st.model] || st.model || "claude-haiku-4-5";
+  const noThinking = model + ":no-thinking";
+  $("model").value = st.thinking === "off" && [...$("model").options].some(o => o.value === noThinking)
+    ? noThinking : model;
   syncEffort();
   $("effort").value = st.effort === "low" ? "" : (st.effort || "");
   $("reportModel").value = st.reportModel || "claude-sonnet-5-5";

@@ -14,6 +14,8 @@ another model (for example sonnet) instead of the agent's default, Haiku.
 --effort overrides the agent's effort level (low by default). A gpt-* model runs the
 bot through the Codex CLI (`codex exec`) against the same MobileBuildMCP server.
 --report-model picks who writes the report (Sonnet 5.5 by default), always at low effort.
+A Claude model with the suffix ":no-thinking" (for example claude-sonnet-5-5:no-thinking) runs
+that model without extended thinking and without --effort.
 
 Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
 """
@@ -39,6 +41,8 @@ BUILD_FINGERPRINTS = ROOT / ".build" / "fingerprints.json"
 EFFORTS = ("low", "medium")
 AGENT = ROOT / ".claude" / "agents" / "medstime-probe.md"
 REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
+# Model suffix that runs a Claude bot without extended thinking.
+NO_THINKING = ":no-thinking"
 CODEX_APP_BIN = Path("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
 # Codex has no StructuredOutput tool; --output-schema makes the final message the result.
 # --narrate: the bot announces each action in one sentence, shown in the live feed.
@@ -189,6 +193,9 @@ class Run:
         self.start = now()
         self.dir = ROOT / "runs" / f"{self.start:%Y-%m-%d-%H%M%S}-{args.app}-{args.scenario}"
         (self.dir / "screenshots").mkdir(parents=True)
+        model, no_thinking = args.model, False
+        if model and model.endswith(NO_THINKING) and not is_openai(model):
+            model, no_thinking = model.removesuffix(NO_THINKING), True
         self.meta = {
             "app": args.app,
             "scenario": args.scenario,
@@ -196,14 +203,15 @@ class Run:
             "scenarioName": meta.get("name", args.scenario),
             "start": self.start.isoformat(timespec="seconds"),
             "maxSteps": int(args.steps or meta.get("maxSteps", 50)),
-            "model": args.model,
-            "effort": args.effort,
+            "model": model,
+            "effort": None if no_thinking else args.effort,
             "reportModel": args.report_model,
             "narrate": args.narrate,
             "freshStart": bool(meta.get("freshStart")),
             "skipOnboarding": bool(meta.get("skipOnboarding")),
-            # Scenario preset: "off" runs the bot without extended thinking, for fast runs.
-            "thinking": meta.get("thinking", "on"),
+            # "off" runs the bot without extended thinking, for fast runs: a scenario preset, or a
+            # ":no-thinking" model.
+            "thinking": "off" if no_thinking else meta.get("thinking", "on"),
             "onboardingDefaults": config.get("skipOnboardingDefaults", {}),
             # App-wide launch arguments (app.md) come first, then the scenario's own.
             "launchArgs": config.get("launchArgs", []) + meta.get("launchArgs", []),
@@ -270,6 +278,7 @@ class Run:
             "effort": self.meta["effort"] or "low",
             "reportModel": self.meta["reportModel"],
             "narrate": self.meta["narrate"],
+            "thinking": self.meta["thinking"],
             "persona": self.meta["persona"],
             "appId": self.meta["app"],
             "scenarioId": self.meta["scenario"],
