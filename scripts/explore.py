@@ -6,12 +6,14 @@ Usage:
 
 The script builds and installs the app, runs the bot in segments through
 `claude -p --agent app-explorer --json-schema`, records every segment, and at
-the end asks Sonnet once for the report summary and analysis.
+the end asks the report model once for the report summary and analysis.
 
 --steps overrides the scenario's maxSteps. --goal replaces the scenario's goal
 and turns it into an open-ended run (no "Done when"). --persona replaces the scenario's persona. --model runs the bot on
 another model (for example sonnet) instead of the agent's default, Haiku.
---effort overrides the agent's effort level (low by default).
+--effort overrides the agent's effort level (low by default). A gpt-* model runs the
+bot through the Codex CLI (`codex exec`) against the same MobileBuildMCP server.
+--report-model picks who writes the report (Sonnet 5.5 by default), always at low effort.
 
 Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
 """
@@ -30,7 +32,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
+EFFORTS = ("low", "medium")
+AGENT = ROOT / ".claude" / "agents" / "app-explorer.md"
+REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
+CODEX_APP_BIN = Path("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex")
+# Codex has no StructuredOutput tool; --output-schema makes the final message the result.
+CODEX_NOTE = ("There is no StructuredOutput tool here: wherever these instructions say to call it, "
+              "make your final message the JSON result itself, with nothing else around it.")
 SEGMENT_STEPS = 10
 MIN_SEGMENT_STEPS = 3
 SEVERITY = ["crash", "bug", "ux", "minor"]
@@ -51,7 +59,7 @@ REPORT_SCHEMA = {
     },
 }
 
-REPORT_PROMPT = """You review a run of an automated QA bot (Claude Haiku) that used an iOS app in the Simulator like a first-time user. Below are the run settings, the bot's segment summaries, its findings, and every step it took.
+REPORT_PROMPT = """You review a run of an automated QA bot ({model}) that used an iOS app in the Simulator like a first-time user. Below are the run settings, the bot's segment summaries, its findings, and every step it took.
 
 Write, in English:
 - "summary": 3-5 sentences. What the bot did, where it ended, the most important problems.
@@ -66,6 +74,48 @@ Base everything on the data; do not invent screens or behavior.
 
 def claude_bin():
     return shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+
+
+def codex_bin():
+    return shutil.which("codex") or str(CODEX_APP_BIN)
+
+
+def is_openai(model):
+    return bool(model) and model.startswith("gpt-")
+
+
+def codex_mcp_config(tools):
+    """-c overrides that give codex exec the project's MobileBuildMCP server, limited to tools."""
+    server = json.loads((ROOT / ".mcp.json").read_text())["mcpServers"]["mobilebuildmcp"]
+    env = ", ".join(f"{k} = {json.dumps(v)}" for k, v in server.get("env", {}).items())
+    key = "mcp_servers.mobilebuildmcp"
+    return ["-c", f"{key}.command={json.dumps(server['command'])}",
+            "-c", f"{key}.args={json.dumps(server.get('args', []))}",
+            "-c", f"{key}.env={{{env}}}",
+            "-c", f"{key}.enabled_tools={json.dumps(tools)}"]
+
+
+def codex_exec(model, effort, schema_path, prompt, extra=()):
+    """Start codex exec with a JSON event stream on stdout."""
+    return subprocess.Popen(
+        [codex_bin(), "exec", "--json", "--ignore-user-config", "--skip-git-repo-check", "-C", str(ROOT),
+         "-s", "read-only", "-m", model, "-c", f"model_reasoning_effort={json.dumps(effort)}",
+         "--output-schema", str(schema_path), *extra, prompt],
+        cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+
+
+def codex_usage(usage):
+    """Codex turn usage in the token kinds of TOKEN_KINDS."""
+    cached = usage.get("cached_input_tokens", 0)
+    return {"input": usage.get("input_tokens", 0) - cached, "cacheRead": cached,
+            "cacheWrite": usage.get("cache_write_input_tokens", 0), "output": usage.get("output_tokens", 0)}
+
+
+def codex_result(model, usage, text):
+    """A claude -p style result for a codex run. Runs on a ChatGPT plan report no dollar cost."""
+    return {"result": text, "total_cost_usd": 0,
+            "modelUsage": {model: {"costUSD": 0, **{TOKEN_KINDS[k]: v for k, v in codex_usage(usage).items()}}}}
 
 
 def now():
@@ -141,6 +191,7 @@ class Run:
             "maxSteps": int(args.steps or meta.get("maxSteps", 50)),
             "model": args.model,
             "effort": args.effort,
+            "reportModel": args.report_model,
             "freshStart": bool(meta.get("freshStart")),
             "launchArgs": meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
@@ -204,6 +255,7 @@ class Run:
             "goal": self.meta["goal"],
             "model": self.meta["model"] or "haiku",
             "effort": self.meta["effort"] or "low",
+            "reportModel": self.meta["reportModel"],
             "persona": self.meta["persona"],
             "appId": self.meta["app"],
             "scenarioId": self.meta["scenario"],
@@ -311,6 +363,20 @@ class Live:
                     "tokens": dict.fromkeys(TOKEN_KINDS, 0)}
         run.update()
 
+    def handle_codex(self, event):
+        item = event.get("item") or {}
+        if event.get("type") == "turn.completed":
+            self.run.live["tokens"] = codex_usage(event.get("usage") or {})
+        elif item.get("type") != "mcp_tool_call":
+            return
+        elif event.get("type") == "item.started":
+            self.action({"name": item.get("tool", ""), "input": item.get("arguments") or {}})
+        elif event.get("type") == "item.completed":
+            for ref, role, label in TARGET.findall(json.dumps(item.get("result"))):
+                self.labels[ref] = label or role
+            return
+        self.run.update()
+
     def handle(self, event):
         message = event.get("message")
         if not isinstance(message, dict) or not isinstance(message.get("content"), list):
@@ -384,6 +450,8 @@ def segment_budget(steps_left):
 
 
 def run_segment(run):
+    if is_openai(run.meta["model"]):
+        return run_segment_codex(run)
     number = len(run.segments) + 1
     prompt = build_prompt(run)
     (run.dir / f"segment-{number}-prompt.txt").write_text(prompt)
@@ -423,6 +491,43 @@ def run_segment(run):
             if data is not None:
                 break
         result["parsedFromText"] = data is not None
+    return data, result
+
+
+def run_segment_codex(run):
+    number = len(run.segments) + 1
+    meta, instructions = parse_front_matter(AGENT)
+    tools = [t.strip().removeprefix("mcp__mobilebuildmcp__") for t in meta["tools"].split(",")
+             if t.strip().startswith("mcp__mobilebuildmcp__")]
+    prompt = f"{instructions}\n\n{CODEX_NOTE}\n\n{build_prompt(run)}"
+    (run.dir / f"segment-{number}-prompt.txt").write_text(prompt)
+    live = Live(run, number)
+    model = run.meta["model"]
+    texts, usage = [], {}
+    with (run.dir / f"segment-{number}.jsonl").open("w") as raw:
+        proc = codex_exec(model, run.meta["effort"] or "low", SCHEMA, prompt, codex_mcp_config(tools))
+        for line in proc.stdout:
+            raw.write(line)
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            item = event.get("item") or {}
+            if item.get("type") == "agent_message":
+                texts.append(item.get("text", ""))
+            if event.get("type") == "turn.completed":
+                usage = event.get("usage") or {}
+            live.handle_codex(event)
+        proc.wait()
+    if not texts:
+        texts = [(run.dir / f"segment-{number}.jsonl").read_text()[-2000:]]
+    result = codex_result(model, usage, texts[-1])
+    run.add_cost(result)
+    data = None
+    for text in texts[::-1]:
+        data = json_from_text(text)
+        if data is not None:
+            break
     return data, result
 
 
@@ -545,7 +650,7 @@ def cell(value):
     return str(value if value is not None else "-").replace("|", "\\|").replace("\n", " ")
 
 
-def ask_sonnet(run):
+def ask_report_model(run):
     data = {
         "run": {k: run.meta[k] for k in ("appName", "scenarioName", "goal", "doneWhen", "persona", "maxSteps")},
         "segments": run.segments,
@@ -553,11 +658,16 @@ def ask_sonnet(run):
         "steps": [{k: s.get(k) for k in ("step", "screen", "action", "target", "result", "observation")}
                   for s in run.steps],
     }
+    model = run.meta["reportModel"]
+    prompt = (REPORT_PROMPT.replace("{model}", run.meta["model"] or "claude-haiku-4-5")
+              .replace("{data}", json.dumps(data, ensure_ascii=False)))
+    if is_openai(model):
+        return ask_codex_report(run, model, prompt)
     proc = subprocess.run(
-        [claude_bin(), "-p", "--model", "sonnet", "--tools", "", "--strict-mcp-config",
+        [claude_bin(), "-p", "--model", model, "--effort", "low", "--tools", "", "--strict-mcp-config",
          "--system-prompt", "You write concise, factual QA reports from run data.",
          "--json-schema", json.dumps(REPORT_SCHEMA),
-         "--output-format", "json", REPORT_PROMPT.replace("{data}", json.dumps(data, ensure_ascii=False))],
+         "--output-format", "json", prompt],
         cwd=ROOT, capture_output=True, text=True,
     )
     (run.dir / "report-model.json").write_text(proc.stdout or proc.stderr)
@@ -567,6 +677,30 @@ def ask_sonnet(run):
         return None
     run.add_cost(result)
     return result.get("structured_output")
+
+
+def ask_codex_report(run, model, prompt):
+    schema = run.dir / "report-schema.json"
+    schema.write_text(json.dumps(REPORT_SCHEMA))
+    proc = codex_exec(model, "low", schema, "You write concise, factual QA reports from run data.\n\n" + prompt)
+    output = proc.communicate()[0]
+    (run.dir / "report-model.jsonl").write_text(output)
+    text, usage = "", {}
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if (event.get("item") or {}).get("type") == "agent_message":
+            text = event["item"].get("text", "")
+        if event.get("type") == "turn.completed":
+            usage = event.get("usage") or {}
+    run.add_cost(codex_result(model, usage, text))
+    try:
+        review = json.loads(text)
+    except ValueError:
+        return None
+    return review if matches(review, REPORT_SCHEMA) else None
 
 
 def fmt_tokens(n):
@@ -649,6 +783,8 @@ def main():
     parser.add_argument("--persona", help="replace the scenario persona")
     parser.add_argument("--model", help="run the bot on this model instead of the agent's default (haiku)")
     parser.add_argument("--effort", choices=EFFORTS, help="override the agent's effort level (low)")
+    parser.add_argument("--report-model", choices=REPORT_MODELS, default=REPORT_MODELS[0],
+                        help="model that writes the report summary and analysis, at low effort")
     args = parser.parse_args()
 
     run = Run(args)
@@ -691,7 +827,7 @@ def main():
     if stopped["flag"] and status not in ("goal_reached", "stuck", "crashed"):
         outcome = "stopped"
     run.update("reporting", "Writing the report")
-    review = ask_sonnet(run)
+    review = ask_report_model(run)
     if review:
         write_report(run, outcome, review["summary"], review["analysis"])
     else:

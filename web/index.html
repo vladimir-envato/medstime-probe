@@ -142,17 +142,30 @@
           <option value="claude-opus-4-6">Opus 4.6</option>
           <option value="claude-opus-4-5">Opus 4.5</option>
         </optgroup>
+        <optgroup label="ChatGPT (Codex)">
+          <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+          <option value="gpt-6-sol">GPT-6 Sol</option>
+          <option value="gpt-6-luna">GPT-6 Luna</option>
+          <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+          <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+          <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
+          <option value="gpt-5.5">GPT-5.5</option>
+        </optgroup>
       </select>
       <label for="effort">Effort</label>
       <select id="effort">
         <option value="">Podrazumevano (low)</option>
         <option value="low">low</option>
         <option value="medium">medium</option>
-        <option value="high">high</option>
-        <option value="xhigh">xhigh</option>
-        <option value="max">max</option>
       </select>
       <div class="hint" id="effortHint"></div>
+      <label for="reportModel">Izveštaj piše</label>
+      <select id="reportModel">
+        <option value="claude-sonnet-5-5">Sonnet 5.5 (podrazumevano)</option>
+        <option value="claude-opus-5-5">Opus 5.5</option>
+        <option value="gpt-6-sol">GPT-6 Sol</option>
+      </select>
+      <div class="hint">Izveštaj se uvek piše sa effort low.</div>
       <label for="personaPick">Persona</label>
       <select id="personaPick"></select>
       <textarea id="persona" rows="3"></textarea>
@@ -290,7 +303,7 @@ function renderStatus(data) {
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
   $("runTitle").textContent = `${st.app} · ${st.scenario}`;
   $("runSetup").textContent = [st.model && `Model: ${st.model.replace("claude-", "")}`,
-    st.effort && `Effort: ${st.effort}`, st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
+    st.effort && `Effort: ${st.effort}`, st.reportModel && `Izveštaj: ${st.reportModel.replace("claude-", "")}`, st.persona && `Persona: ${st.persona}`].filter(Boolean).join(" · ");
   $("message").textContent = st.message || "";
   // Recorded steps come from the bot's segment report; during a segment, add
   // the app actions seen live so the count moves with every tap.
@@ -399,12 +412,12 @@ document.addEventListener("click", e => {
 // While a run is in progress, from the UI or the terminal, the form shows
 // that run's settings and is locked; afterwards it gets back what was there.
 const FORM_IDS = ["app", "scenario", "steps", "stepsUp", "stepsDown", "model", "effort",
-                  "personaPick", "persona", "goal", "start"];
+                  "reportModel", "personaPick", "persona", "goal", "start"];
 // Effort levels each model accepts; Haiku 4.5 and Sonnet 4.5 have none.
 const MODEL_EFFORTS = {
-  "claude-haiku-4-5": [], "claude-sonnet-4-5": [], "claude-opus-4-5": ["low", "medium", "high"],
+  "claude-haiku-4-5": [], "claude-sonnet-4-5": [], "claude-opus-4-5": ["low", "medium"],
 };
-const ALL_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const ALL_EFFORTS = ["low", "medium"];
 function syncEffort() {
   const allowed = MODEL_EFFORTS[$("model").value] ?? ALL_EFFORTS;
   [...$("effort").options].forEach(o => { o.hidden = o.disabled = o.value !== "" && !allowed.includes(o.value); });
@@ -428,6 +441,7 @@ function lockForm(st) {
   $("model").value = MODEL_ALIASES[st.model] || st.model || "claude-haiku-4-5";
   syncEffort();
   $("effort").value = st.effort === "low" ? "" : (st.effort || "");
+  $("reportModel").value = st.reportModel || "claude-sonnet-5-5";
   const i = personas.findIndex(p => p.text === st.persona);
   $("personaPick").value = i >= 0 ? String(i) : "";
   $("persona").value = st.persona || currentScenario()?.persona || "";
@@ -472,6 +486,7 @@ $("start").onclick = async () => {
   try {
     await api("/api/start", {app: $("app").value, scenario: $("scenario").value,
                              steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").dataset.unsupported ? "" : $("effort").value,
+                             reportModel: $("reportModel").value,
                              persona: $("persona").value.trim() !== (currentScenario()?.persona || "").trim()
                                ? $("persona").value : "",
                              goal: $("goal").value});

@@ -26,8 +26,11 @@ NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 MODELS = ("claude-haiku-4-5",
           "claude-sonnet-5-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4-5",
           "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
-          "claude-opus-4-5")
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
+          "claude-opus-4-5",
+          "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna",
+          "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5")
+EFFORTS = ("low", "medium")
+REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
 
 current = {"proc": None, "log": None}
 
@@ -156,6 +159,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--model", body["model"]]
             if body.get("effort") in EFFORTS:
                 cmd += ["--effort", body["effort"]]
+            if body.get("reportModel") in REPORT_MODELS:
+                cmd += ["--report-model", body["reportModel"]]
             if str(body.get("persona", "")).strip():
                 cmd += ["--persona", str(body["persona"]).strip()]
             if str(body.get("goal", "")).strip():
