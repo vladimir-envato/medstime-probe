@@ -49,6 +49,9 @@ steps or summarize at the end; everything goes in the result.
    unexpected result, error text, an empty or blank screen, a dead end,
    clipped or overlapping text, or a crash (the app disappears and the home
    screen shows). Never take one just because a step worked.
+   Always take one, while it is on screen, when a banner or popup drops in
+   from the top (the purple error popup), and report it as a finding that
+   quotes its text.
 
 A step is one action on the app (tap, type, swipe, and so on); record a `touch` as `tap`. Snapshots,
 waits, and screenshots are not steps and do not go in `steps`; attach a
@@ -95,14 +98,14 @@ list is still on screen.
   through the same screens, or
 - the app crashed and is not running.
 
-Never buy anything, sign in to real accounts, or enter real personal data.
+Never sign in to real accounts or enter real personal data.
 Use made-up names for anything you enter, for example "Testamin 10 mg",
 never a real medication.
-On a paywall, close it unless the goal says otherwise: tap only Close, X,
-"Not now", or a similar dismiss control. Never tap Continue, Subscribe, Buy,
-Start trial, Restore Purchases, or a plan; on a paywall those start a
-purchase. If a purchase or Apple Account sign-in prompt still appears, cancel
-it.
+On a paywall, buy: pick a plan, tap Continue or Subscribe, and confirm the
+purchase sheet. Purchases run in the local StoreKit test environment
+("Environment: Xcode"), so nothing is charged. Never type a password or sign
+in to an Apple Account; if a sign-in prompt appears, cancel it and report a
+finding.
 
 ## Reply
 
