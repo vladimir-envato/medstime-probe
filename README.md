@@ -206,7 +206,10 @@ like anything else in Claude Code. Use test data in the app.
 ### Which Xcode
 
 `explore.py` builds with `xcodebuild`, using the Xcode selected by
-`xcode-select -p`, into `.build/DerivedData` (not committed). No Xcode agent
+`xcode-select -p`, into `.build/DerivedData` (not committed). It skips the build when the
+app repo's commit, uncommitted changes, and untracked files hash the same as at
+the last successful build (`.build/fingerprints.json`), and installs the
+existing `.app`. No Xcode agent
 integration is involved, so the Xcode 26.3 requirement on the MobileBuildMCP
 site does not apply here.
 

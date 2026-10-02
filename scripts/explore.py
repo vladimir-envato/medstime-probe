@@ -18,6 +18,7 @@ bot through the Codex CLI (`codex exec`) against the same MobileBuildMCP server.
 Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -32,6 +33,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "segment_schema.json"
 DERIVED_DATA = ROOT / ".build" / "DerivedData"
+# Source fingerprint of the last successful build, per project, scheme, and configuration.
+BUILD_FINGERPRINTS = ROOT / ".build" / "fingerprints.json"
 EFFORTS = ("low", "medium")
 AGENT = ROOT / ".claude" / "agents" / "medstime-probe.md"
 REPORT_MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-sol")
@@ -305,6 +308,20 @@ def write_mcp_config(run):
     )
 
 
+def source_fingerprint(project_path):
+    """Hash of the app repo's commit, uncommitted changes, and untracked files, or None outside git."""
+    repo = Path(project_path).parent
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True)
+    head = git("rev-parse", "HEAD")
+    if head.returncode != 0:
+        return None
+    digest = hashlib.sha256(head.stdout + git("diff", "HEAD", "--binary").stdout)
+    for name in sorted(git("ls-files", "--others", "--exclude-standard", "-z").stdout.split(b"\0")):
+        if name:
+            digest.update(name + (repo / name.decode()).read_bytes())
+    return digest.hexdigest()
+
+
 def build_and_launch(run):
     m = run.meta
     udid = m["simulatorId"]
@@ -312,20 +329,32 @@ def build_and_launch(run):
     subprocess.run(["xcrun", "simctl", "boot", udid], capture_output=True)
     subprocess.run(["open", "-a", "Simulator", "--args", "-CurrentDeviceUDID", udid], capture_output=True)
 
-    run.update("building", "Building the app")
-    with log.open("w") as f:
-        build = subprocess.run(
-            ["xcodebuild", "-project", m["projectPath"], "-scheme", m["scheme"],
-             "-configuration", m["configuration"], "-destination", f"id={udid}",
-             "-derivedDataPath", str(DERIVED_DATA), "build"],
-            stdout=f, stderr=subprocess.STDOUT,
-        )
-    if build.returncode != 0:
-        tail = log.read_text().splitlines()
-        errors = [line for line in tail if "error:" in line] or tail[-30:]
-        raise BuildFailed("\n".join(errors[-30:]))
-
+    key = f"{m['projectPath']}|{m['scheme']}|{m['configuration']}"
+    fingerprint = source_fingerprint(m["projectPath"])
+    try:
+        fingerprints = json.loads(BUILD_FINGERPRINTS.read_text())
+    except (OSError, ValueError):
+        fingerprints = {}
     products = DERIVED_DATA / "Build" / "Products" / f"{m['configuration']}-iphonesimulator"
+    if fingerprint and fingerprints.get(key) == fingerprint and any(products.glob("*.app")):
+        log.write_text(f"Skipped: app sources unchanged since the last build ({fingerprint[:12]}).\n")
+    else:
+        run.update("building", "Building the app")
+        with log.open("w") as f:
+            build = subprocess.run(
+                ["xcodebuild", "-project", m["projectPath"], "-scheme", m["scheme"],
+                 "-configuration", m["configuration"], "-destination", f"id={udid}",
+                 "-derivedDataPath", str(DERIVED_DATA), "build"],
+                stdout=f, stderr=subprocess.STDOUT,
+            )
+        if build.returncode != 0:
+            tail = log.read_text().splitlines()
+            errors = [line for line in tail if "error:" in line] or tail[-30:]
+            raise BuildFailed("\n".join(errors[-30:]))
+        if fingerprint:
+            fingerprints[key] = fingerprint
+            BUILD_FINGERPRINTS.write_text(json.dumps(fingerprints, indent=2) + "\n")
+
     app = None
     for candidate in products.glob("*.app"):
         bundle = subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier",
