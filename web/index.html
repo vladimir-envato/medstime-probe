@@ -194,9 +194,16 @@ async function loadOptions() {
 }
 
 function duration(start, end) {
-  const s = Math.max(0, Math.round(((end ? new Date(end) : new Date()) - new Date(start)) / 1000));
+  const s = Math.max(0, Math.floor(((end ? new Date(end) : new Date()) - new Date(start)) / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
+
+// The duration ticks locally every 450 ms instead of waiting for the 2 s status poll.
+let clock = null;
+function tickClock() {
+  if (clock) $("sTime").textContent = duration(clock.start, clock.end);
+}
+setInterval(tickClock, 450);
 
 function renderStatus(data) {
   const st = data.status, isRunning = data.running;
@@ -220,7 +227,10 @@ function renderStatus(data) {
     (liveSteps ? ` · ${liveSteps} u segmentu ${st.live.segment} (uživo)` : "");
   const f = st.findings || {};
   $("sSteps").textContent = steps;
-  $("sSegments").textContent = st.segments;
+  // A running segment counts too, in grey, until its log arrives.
+  const segmentRunning = !finished && isRunning && !!st.live;
+  $("sSegments").textContent = st.segments + (segmentRunning ? 1 : 0);
+  $("sSegments").classList.toggle("provisional", segmentRunning);
   $("sFindings").textContent = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
   $("sCost").textContent = "$" + (st.costUSD || 0).toFixed(3);
   const tk = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n || 0);
@@ -235,7 +245,8 @@ function renderStatus(data) {
   $("tokenDetail").innerHTML = Object.entries(st.tokensByModel || {}).map(([m, t]) =>
     `<div>${esc(m)}: ${tk(sum(t))} · ulaz ${tk(t.input)} · keš čitanje ${tk(t.cacheRead)} · keš upis ${tk(t.cacheWrite)} · izlaz ${tk(t.output)} · $${((st.costByModel || {})[m] || 0).toFixed(3)}</div>`
   ).join("") + (liveTokens ? `<div>Segment ${st.live.segment} u toku: ${tk(liveTokens)} tokena (izlaz ${tk(st.live.tokens.output)}); trošak stiže kad se segment završi.</div>` : "");
-  $("sTime").textContent = duration(st.start, finished || !isRunning ? st.updated : null);
+  clock = {start: st.start, end: finished || !isRunning ? st.updated : null};
+  tickClock();
 
   const live = st.live;
   $("livePanel").hidden = !live || finished;
@@ -248,6 +259,9 @@ function renderStatus(data) {
 
   $("segs").innerHTML = (st.segmentSummaries || []).map(s => `<li>${esc(s)}</li>`).join("");
   $("segsEmpty").hidden = (st.segmentSummaries || []).length > 0;
+  $("segsEmpty").textContent = segmentRunning
+    ? `Segment ${st.live.segment} je u toku; sažetak stiže kad bot završi segment.`
+    : "Bot još nije završio nijedan segment.";
 
   const run = encodeURIComponent(st.runDir);
   const findingsByStep = {};
@@ -256,7 +270,7 @@ function renderStatus(data) {
     `<tr><td>${s.step}</td><td>${esc(s.screen)}</td><td>${esc(s.action)}</td><td>${esc(s.target)}</td>
      <td class="r-${esc(s.result)}">${esc(s.result)}${(findingsByStep[s.step] || []).map(f =>
        `<a class="flink" href="#live-finding-${f.i}">${esc(f.severity)}</a>`).join("")}</td></tr>`).join("") ||
-    `<tr><td colspan="5" class="empty">Još nema koraka.</td></tr>`;
+    `<tr><td colspan="5" class="empty">Koraci stižu kad bot završi segment (do 10 koraka po segmentu).</td></tr>`;
 
   $("findings").innerHTML = (st.recentFindings || []).map((x, i) =>
     `<div class="finding" id="live-finding-${i}"><span class="sev sev-${esc(x.severity)}">${esc(x.severity)}</span>

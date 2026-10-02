@@ -192,7 +192,9 @@ class Handler(BaseHTTPRequestHandler):
                 cmd += ["--goal", str(body["goal"]).strip()]
             RUNS.mkdir(exist_ok=True)
             log = (RUNS / "server-run.log").open("w")
-            current["proc"] = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+            # Own session: a run survives the server restarting or its terminal closing.
+            current["proc"] = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                                               start_new_session=True)
             current["log"] = log
             return self.send(200, {"started": True})
 
