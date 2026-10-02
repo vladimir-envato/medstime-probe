@@ -136,7 +136,9 @@ to a model.
 - **Paywalls**: the bot buys a plan; the purchase sheet is a test environment
   (local StoreKit, or the sandbox Apple Account signed in on the simulator under
   Settings → Developer), so nothing is charged. Sandbox purchases stay on that
-  account across reinstalls until the subscription lapses. It never signs in to an Apple
+  account across reinstalls until the subscription lapses. The bot never taps
+  Cancel Subscription or Manage Subscriptions: they open Apple's App Store
+  sheet, which cannot load a mock-store purchase. It never signs in to an Apple
   Account and reports a finding if asked to.
 - **Permissions**: the bot always allows notifications and skips alarms.
 - **Settings is off limits**: the bot never opens the iOS Settings app or
