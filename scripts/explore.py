@@ -202,6 +202,8 @@ class Run:
             "narrate": args.narrate,
             "freshStart": bool(meta.get("freshStart")),
             "skipOnboarding": bool(meta.get("skipOnboarding")),
+            # Scenario preset: "off" runs the bot without extended thinking, for fast runs.
+            "thinking": meta.get("thinking", "on"),
             "onboardingDefaults": config.get("skipOnboardingDefaults", {}),
             # App-wide launch arguments (app.md) come first, then the scenario's own.
             "launchArgs": config.get("launchArgs", []) + meta.get("launchArgs", []),
@@ -538,7 +540,8 @@ def run_segment(run):
             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             # The bot calls the model every few seconds, and each read renews a
             # 5-minute cache, so the pricier 1-hour writes buy nothing.
-            env={**os.environ, "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m"},
+            env={**os.environ, "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m",
+                 **({"MAX_THINKING_TOKENS": "0"} if run.meta["thinking"] == "off" else {})},
         )
         for line in proc.stdout:
             raw.write(line)
