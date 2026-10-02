@@ -133,8 +133,10 @@ to a model.
   typing into an unfocused field is silently lost.
 - **Screenshots** only when something looks wrong: every finding must carry
   one (the schema rejects a finding without it), and nothing else gets one.
-- **Paywalls**: the bot buys a plan; the purchase sheet is the local StoreKit
-  test environment, so nothing is charged. It never signs in to an Apple
+- **Paywalls**: the bot buys a plan; the purchase sheet is a test environment
+  (local StoreKit, or the sandbox Apple Account signed in on the simulator under
+  Settings → Developer), so nothing is charged. Sandbox purchases stay on that
+  account across reinstalls until the subscription lapses. It never signs in to an Apple
   Account and reports a finding if asked to.
 - **Permissions**: the bot always allows notifications and skips alarms.
 - **Settings is off limits**: the bot never opens the iOS Settings app or
@@ -172,7 +174,7 @@ Scenario front matter:
 | `name` | Title in the report |
 | `freshStart` | `true` uninstalls the app first: no data, no permissions |
 | `maxSteps` | Step budget for the whole run |
-| `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]` |
+| `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account) |
 | `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out

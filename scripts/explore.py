@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
 import signal
@@ -53,7 +54,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet (it is the local StoreKit test environment, \"Environment: Xcode\", so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner, or call launch_app_sim if the snapshot does not list it. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -202,7 +203,8 @@ class Run:
             "freshStart": bool(meta.get("freshStart")),
             "skipOnboarding": bool(meta.get("skipOnboarding")),
             "onboardingDefaults": config.get("skipOnboardingDefaults", {}),
-            "launchArgs": meta.get("launchArgs", []),
+            # App-wide launch arguments (app.md) come first, then the scenario's own.
+            "launchArgs": config.get("launchArgs", []) + meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
             "projectPath": config["projectPath"],
             "scheme": config["scheme"],
@@ -377,15 +379,19 @@ def build_and_launch(run):
 
 
 def skip_onboarding(m):
-    """Marks onboarding finished in the app's UserDefaults before launch (app.md skipOnboardingDefaults)."""
+    """Marks onboarding finished before launch by writing app.md skipOnboardingDefaults into the
+    app's own preferences plist, inside its data container, so deleting the app removes them.
+    (`simctl spawn defaults write` would write the simulator-wide domain, which outlives the app.)"""
     if not m["onboardingDefaults"]:
         raise SystemExit("skipOnboarding needs skipOnboardingDefaults in app.md")
-    subprocess.run(["xcrun", "simctl", "terminate", m["simulatorId"], m["bundleId"]], capture_output=True)
-    for key, value in m["onboardingDefaults"].items():
-        kind = "-bool" if isinstance(value, bool) else "-int" if isinstance(value, int) else "-string"
-        text = ("YES" if value else "NO") if isinstance(value, bool) else str(value)
-        subprocess.run(["xcrun", "simctl", "spawn", m["simulatorId"], "defaults", "write", m["bundleId"],
-                        key, kind, text], check=True, capture_output=True)
+    udid, bundle = m["simulatorId"], m["bundleId"]
+    subprocess.run(["xcrun", "simctl", "terminate", udid, bundle], capture_output=True)
+    container = subprocess.run(["xcrun", "simctl", "get_app_container", udid, bundle, "data"],
+                               check=True, capture_output=True, text=True).stdout.strip()
+    path = Path(container) / "Library" / "Preferences" / f"{bundle}.plist"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prefs = plistlib.loads(path.read_bytes()) if path.exists() else {}
+    path.write_bytes(plistlib.dumps({**prefs, **m["onboardingDefaults"]}))
 
 
 class BuildFailed(Exception):
