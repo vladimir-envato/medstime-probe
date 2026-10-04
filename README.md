@@ -229,6 +229,8 @@ Scenario front matter:
 | `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as Autonomous - Fast random taps (`autonomous-fast`); a `:no-thinking` model does the same for one run |
 | `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 | `allowAlarms` | `true` makes the bot allow alarms as well as notifications, in onboarding and on the system alerts; by default it skips alarms. Used by Autonomous - Full app, permissions allowed (`autonomous-full-app`) |
+| `model` | Bot model for this scenario, for example `claude-sonnet-5-5`; default Haiku 4.5. The web UI preselects it, and `--model` or another choice in the UI replaces it |
+| `reportModel` | Model that writes the report, one of `claude-sonnet-5-5`, `claude-opus-5-5`, `gpt-6-sol`; default Sonnet 5.5. `--report-model` or the UI replaces it |
 | `tapDelay` | Touch length of a tap in seconds; default `0.15`. `autonomous-full-app` uses `0.165` |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out

@@ -205,9 +205,15 @@ function syncSteps() {
   $("scenarioSkip").hidden = !currentScenario()?.skipOnboarding;
   $("scenarioThinking").hidden = !currentScenario()?.thinkingOff;
   $("scenarioAlarms").hidden = !currentScenario()?.allowAlarms;
+  $("model").value = scenarioModel();
+  syncEffort();
+  $("reportModel").value = scenarioReportModel();
   $("personaPick").value = "";
   syncPersona();
 }
+// A scenario can set its own bot and report models; without them the defaults apply.
+const scenarioModel = () => currentScenario()?.model || "claude-haiku-4-5";
+const scenarioReportModel = () => currentScenario()?.reportModel || "claude-sonnet-5-5";
 function syncPersona() {
   const i = $("personaPick").value;
   $("persona").value = i === "" ? (currentScenario()?.persona || "") : personas[i].text;
@@ -347,14 +353,11 @@ function resetLive() {
   lastRunDir = null; lastState = null; viewing = null;
 }
 
-// Puts the New run form back to its defaults: first app and scenario, Haiku, low effort.
+// Puts the New run form back to its defaults: first app and scenario with its models, low effort.
 function resetForm() {
   $("app").selectedIndex = 0;
   fillScenarios();
-  $("model").value = "claude-haiku-4-5";
-  syncEffort();
   $("effort").value = "";
-  $("reportModel").value = "claude-sonnet-5-5";
   $("narrate").value = "";
   $("goal").value = "";
   $("error").textContent = "";
@@ -505,8 +508,11 @@ $("model").onchange = syncEffort;
 $("start").onclick = async () => {
   try {
     await api("/api/start", {app: $("app").value, scenario: $("scenario").value,
-                             steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").dataset.unsupported ? "" : $("effort").value,
-                             reportModel: $("reportModel").value,
+                             steps: Number($("steps").value) || null,
+                             // Only a change from the scenario's models is sent, so the scenario's own apply otherwise.
+                             model: $("model").value !== scenarioModel() ? $("model").value : "",
+                             effort: $("effort").dataset.unsupported ? "" : $("effort").value,
+                             reportModel: $("reportModel").value !== scenarioReportModel() ? $("reportModel").value : "",
                              narrate: $("narrate").value === "1",
                              persona: $("persona").value.trim() !== (currentScenario()?.persona || "").trim()
                                ? $("persona").value : "",

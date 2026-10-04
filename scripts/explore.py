@@ -204,7 +204,8 @@ class Run:
         self.start = now()
         self.dir = ROOT / "runs" / f"{self.start:%Y-%m-%d-%H%M%S}-{args.app}-{args.scenario}"
         (self.dir / "screenshots").mkdir(parents=True)
-        model, no_thinking = args.model, False
+        # The command line wins over the scenario's own model and report model.
+        model, no_thinking = args.model or meta.get("model"), False
         if model and model.endswith(NO_THINKING) and not is_openai(model):
             model, no_thinking = model.removesuffix(NO_THINKING), True
         self.meta = {
@@ -216,7 +217,7 @@ class Run:
             "maxSteps": int(args.steps or meta.get("maxSteps", 50)),
             "model": model,
             "effort": None if no_thinking else args.effort,
-            "reportModel": args.report_model,
+            "reportModel": args.report_model or meta.get("reportModel") or REPORT_MODELS[0],
             "narrate": args.narrate,
             "freshStart": bool(meta.get("freshStart")),
             "skipOnboarding": bool(meta.get("skipOnboarding")),
@@ -975,8 +976,9 @@ def main():
     parser.add_argument("--persona", help="replace the scenario persona")
     parser.add_argument("--model", help="run the bot on this model instead of the agent's default (haiku)")
     parser.add_argument("--effort", choices=EFFORTS, help="override the agent's effort level (low)")
-    parser.add_argument("--report-model", choices=REPORT_MODELS, default=REPORT_MODELS[0],
-                        help="model that writes the report summary and analysis, at low effort")
+    parser.add_argument("--report-model", choices=REPORT_MODELS,
+                        help="model that writes the report summary and analysis, at low effort; "
+                             "default: the scenario's reportModel, else " + REPORT_MODELS[0])
     parser.add_argument("--narrate", action="store_true",
                         help="let the bot announce each action in one sentence (slower; off by default)")
     args = parser.parse_args()

@@ -49,9 +49,13 @@ def scenarios():
             steps = re.search(r"^maxSteps:\s*(\d+)$", text, re.M)
             goal = section(text, "Goal")
             persona = section(text, "Persona")
+            model = re.search(r"^model:\s*\"?([\w.:-]+)\"?\s*$", text, re.M)
+            report_model = re.search(r"^reportModel:\s*\"?([\w.:-]+)\"?\s*$", text, re.M)
             items.append({"id": path.stem, "name": name.group(1).strip() if name else path.stem,
                           "maxSteps": int(steps.group(1)) if steps else 50,
                           "goal": goal, "persona": persona,
+                          "model": model.group(1) if model else None,
+                          "reportModel": report_model.group(1) if report_model else None,
                           "skipOnboarding": bool(re.search(r"^skipOnboarding:\s*true\s*$", text, re.M)),
                           "thinkingOff": bool(re.search(r"^thinking:\s*\"?off\"?\s*$", text, re.M)),
                           "allowAlarms": bool(re.search(r"^allowAlarms:\s*true\s*$", text, re.M))})
@@ -185,7 +189,8 @@ class Handler(BaseHTTPRequestHandler):
             cmd = [sys.executable, str(ROOT / "scripts" / "explore.py"), app, scenario]
             if body.get("steps"):
                 cmd += ["--steps", str(max(1, min(500, int(body["steps"]))))]
-            if body.get("model") in MODELS and body["model"] != "claude-haiku-4-5":
+            # The page sends a model only when it differs from the scenario's own.
+            if body.get("model") in MODELS:
                 cmd += ["--model", body["model"]]
             if body.get("effort") in EFFORTS:
                 cmd += ["--effort", body["effort"]]
