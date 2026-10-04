@@ -51,7 +51,10 @@ findings; watch the Simulator itself (or Device Hub) to see the screen. Steps
 and tokens count up live; cost arrives when a segment ends, so cost and tokens
 show grey until then. A step with a finding links to its description and
 screenshot. When the run ends, the report appears below; the last 5 runs
-are listed on the left, with a count of the rest in `runs/`.
+are listed on the left, with a count of the rest in `runs/`. Each has a
+**Copy ID** button that copies the run's folder name in `runs/` (for example
+`2026-10-04-025211-medstime-autonomous-add-medication`), so you can paste it
+to Claude Code and it opens the whole run: logs, prompts, and screenshots.
 
 **Finding history** (`/history`) lists every finding from every run, filterable
 by severity, app, scenario, and text, with the bot's own failures hidden by

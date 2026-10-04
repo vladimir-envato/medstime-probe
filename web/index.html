@@ -318,14 +318,28 @@ async function showReport(runDir) {
   viewing = runDir;
 }
 
+const COPY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+
 async function loadRuns() {
   const {runs, total} = await api("/api/runs");
   $("runs").innerHTML = runs.map(r => {
     const f = r.findings || {};
     const n = (f.crash||0) + (f.bug||0) + (f.ux||0) + (f.minor||0);
-    return `<a href="#" data-run="${esc(r.runDir)}"><div class="rt">${esc(r.app)} · ${esc(r.scenario)}</div>
-      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${esc((r.model || "haiku").replace("claude-", ""))}${r.effort ? " · " + esc(r.effort) : ""} · ${r.steps}/${r.maxSteps} steps · ${n} findings · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokens" : ""}</div></a>`;
+    return `<div class="run"><a href="#" data-run="${esc(r.runDir)}"><div class="rt">${esc(r.app)} · ${esc(r.scenario)}</div>
+      <div class="rm">${esc(new Date(r.start).toLocaleString())} · ${esc(r.message || r.state)} · ${esc((r.model || "haiku").replace("claude-", ""))}${r.effort ? " · " + esc(r.effort) : ""} · ${r.steps}/${r.maxSteps} steps · ${n} findings · $${(r.costUSD||0).toFixed(3)}${r.tokens ? " · " + Math.round(((r.tokens.input||0)+(r.tokens.cacheRead||0)+(r.tokens.cacheWrite||0)+(r.tokens.output||0))/1000) + "k tokens" : ""}</div></a>
+      <button type="button" class="copy-id" data-id="${esc(r.runDir)}" title="${esc(r.runDir)}">${COPY_ICON}<span>Copy ID</span></button></div>`;
   }).join("") || `<div class="empty">No runs.</div>`;
+  // The run ID is its folder name in runs/, which is all Claude needs to open the run.
+  $("runs").querySelectorAll(".copy-id").forEach(b => b.onclick = async () => {
+    const label = b.querySelector("span");
+    try {
+      await navigator.clipboard.writeText(b.dataset.id);
+      label.textContent = "Copied";
+    } catch {
+      label.textContent = "Copy failed";
+    }
+    setTimeout(() => { label.textContent = "Copy ID"; }, 1500);
+  });
   if (total > runs.length) $("runs").insertAdjacentHTML("beforeend",
     `<div class="more">${total - runs.length} more ${total - runs.length === 1 ? "run" : "runs"} in the /runs folder.</div>`);
   $("runs").querySelectorAll("a").forEach(a => a.onclick = e => {
