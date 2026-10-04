@@ -216,6 +216,14 @@ class Handler(BaseHTTPRequestHandler):
                 os.kill((read_json(RUNS / "latest.json") or {})["pid"], signal.SIGTERM)
             return self.send(200, {"stopping": True})
 
+        if path == "/api/clear":
+            if running():
+                return self.send(409, {"error": "A run is in progress"})
+            # latest.json is only a copy of the last run's status.json; the run's folder keeps
+            # everything, so this clears the page without losing the run.
+            (RUNS / "latest.json").unlink(missing_ok=True)
+            return self.send(200, {"cleared": True})
+
         self.send(404, {"error": "not found"})
 
 

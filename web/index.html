@@ -96,6 +96,7 @@
       <div class="buttons">
         <button id="start" class="primary">Start</button>
         <button id="stop">Stop</button>
+        <button id="clear" title="Empty the page and reset the form. The run stays in runs/.">Clear</button>
       </div>
       <div class="error" id="error"></div>
     </section>
@@ -226,7 +227,11 @@ function renderStatus(data) {
   const st = data.status, isRunning = data.running;
   $("start").disabled = isRunning;
   $("stop").disabled = !isRunning;
-  if (!st) return;
+  $("clear").disabled = isRunning;
+  if (!st) {
+    if (lastRunDir !== null) resetLive();
+    return;
+  }
   const finished = ["done", "failed"].includes(st.state);
   $("state").textContent = STATES[st.state] || st.state;
   $("state").className = "pill " + (st.state === "done" && st.message === "stuck" ? "stuck" : st.state);
@@ -301,6 +306,46 @@ function renderStatus(data) {
     loadRuns();
   }
   lastRunDir = st.runDir; lastState = st.state;
+}
+
+// Puts the run panels back to how the page first opens, with no run shown.
+function resetLive() {
+  $("state").textContent = "—";
+  $("state").className = "pill";
+  $("runTitle").textContent = "No active run";
+  $("message").textContent = "";
+  $("runSetup").textContent = "";
+  $("progress").style.width = "0%";
+  $("progressText").textContent = "";
+  ["sSteps", "sSegments", "sFindings", "sTokens"].forEach(id => $(id).textContent = "0");
+  $("sCost").textContent = "$0.00";
+  $("sTime").textContent = "0:00";
+  ["sSegments", "sTokens", "sCost"].forEach(id => $(id).classList.remove("provisional"));
+  $("tokenDetail").innerHTML = "";
+  clock = null;
+  $("livePanel").hidden = true;
+  $("liveFeed").innerHTML = "";
+  $("segs").innerHTML = "";
+  $("segsEmpty").hidden = false;
+  $("segsEmpty").textContent = "The bot has not finished a segment yet.";
+  $("steps-body").innerHTML = "";
+  $("findings").innerHTML = `<div class="empty">No findings.</div>`;
+  $("reportPanel").hidden = true;
+  $("report").innerHTML = "";
+  lastRunDir = null; lastState = null; viewing = null;
+}
+
+// Puts the New run form back to its defaults: first app and scenario, Haiku, low effort.
+function resetForm() {
+  $("app").selectedIndex = 0;
+  fillScenarios();
+  $("model").value = "claude-haiku-4-5";
+  syncEffort();
+  $("effort").value = "";
+  $("reportModel").value = "claude-sonnet-5-5";
+  $("narrate").value = "";
+  $("goal").value = "";
+  $("error").textContent = "";
 }
 
 async function showReport(runDir) {
@@ -459,6 +504,13 @@ $("start").onclick = async () => {
 };
 $("stop").onclick = async () => {
   try { await api("/api/stop", {}); } catch (e) { $("error").textContent = e.message; }
+};
+$("clear").onclick = async () => {
+  try {
+    await api("/api/clear", {});
+    resetLive();
+    resetForm();
+  } catch (e) { $("error").textContent = e.message; }
 };
 
 syncEffort();

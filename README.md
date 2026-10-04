@@ -55,6 +55,10 @@ are listed on the left, with a count of the rest in `runs/`. Each has a
 **Copy ID** button that copies the run's folder name in `runs/` (for example
 `2026-10-04-025211-medstime-autonomous-add-medication`), so you can paste it
 to Claude Code and it opens the whole run: logs, prompts, and screenshots.
+**Clear** (when no run is in progress) empties the page and resets the form to
+its defaults. It deletes only `runs/latest.json`, the copy of the last run's
+`status.json` that the page reads; the run's folder stays, and the run is
+still listed with its report.
 
 **Finding history** (`/history`) lists every finding from every run, filterable
 by severity, app, scenario, and text, with the bot's own failures hidden by
