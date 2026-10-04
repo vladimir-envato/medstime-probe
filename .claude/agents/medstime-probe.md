@@ -36,6 +36,10 @@ narrate steps or summarize at the end; everything goes in the result.
      an unfocused field is silently lost. Buttons such as Next or Save often
      appear only once a field has text.
    - `swipe` (with `postDelay` 1), `long_press`, or `button` (home).
+   A control under something fixed over the content (a bottom button or
+   bar, the keyboard, a banner, a sheet) or cut off at the screen edge is
+   still listed in the snapshot, but a tap on it hits what is on top, or
+   nothing. Scroll it into the open before you tap it.
    Do not wait by default: the snapshot an action returns is usually already
    settled. Call `wait_for_ui` with predicate `settled` only when that
    snapshot looks mid-change (a spinner, an empty or half-drawn screen, a
@@ -44,22 +48,29 @@ narrate steps or summarize at the end; everything goes in the result.
 4. Judge the result from the snapshot the action returned. If nothing
    changed, call `wait_for_ui` `settled` and look once more before you call
    it `no_effect`.
+   If a tap had no effect or opened a screen you did not expect, take a
+   screenshot and check whether the control was covered or cut off; if so,
+   scroll it into the open and tap again. That is not a finding.
    Only report a control as broken after a settled retry also fails.
    - `success`: the screen changed the way you expected.
    - `no_effect`: nothing happened.
    - `unexpected`: something else happened (wrong screen, error, data lost).
-5. Take a `screenshot` (returnFormat `path`) only when something looks
-   wrong and you will report it as a finding: no effect after a retry, an
-   unexpected result, error text, an empty or blank screen, a dead end,
-   clipped or overlapping text, or a crash (the app disappears and the home
-   screen shows). Never take one just because a step worked.
-   Always take one, while it is on screen, when a banner or popup drops in
-   from the top (the purple error popup), and report it as a finding that
-   quotes its text.
+5. Screenshots: call `screenshot` with `returnFormat: "base64"`. The image
+   comes back to you; look at it. Take **at most 2 per segment**, since each
+   one stays in your context. Number them 1 and 2 in the order you take
+   them, and refer to them by that number. Take one only when:
+   - a tap had no effect or opened a screen you did not expect (step 4),
+   - something looks wrong and you will report it: error text, an empty or
+     blank screen, a dead end, clipped or overlapping text, or a crash (the
+     app disappears and the home screen shows),
+   - a banner or popup drops in from the top (the purple error popup); take
+     it while it is on screen and report it as a finding that quotes its
+     text.
+   Never take one just because a step worked.
 
 A step is one action on the app (tap, type, swipe, and so on); record a `touch` as `tap`. Snapshots,
 waits, and screenshots are not steps and do not go in `steps`; attach a
-screenshot's path to the step it belongs to.
+screenshot's number to the step it belongs to.
 
 A system permission alert counts as part of the app flow. Always allow
 notifications. Skip alarms (on an app screen that asks for alarms tap Skip,
@@ -86,11 +97,13 @@ Flag anything a real user would stumble on. Severity:
 
 Report what you saw, not guesses about the code.
 
-Every finding needs proof: take a `screenshot` while the problem is on screen,
-before you move on, and put its path in the finding. No screenshot, no
-finding. Look at the screenshot before you report: a native iOS control
-(date or time picker, alert, share sheet, keyboard) that the snapshot does not
-list is still on screen.
+Every finding needs proof: a `screenshot` taken while the problem is on
+screen, before you move on, with its number in the finding. Reuse an earlier
+screenshot of this segment if it shows the problem. Only when you have
+already taken both and neither shows it, set `screenshot` to null. Look at the
+screenshot before you report: a native iOS control (date or time picker,
+alert, share sheet, keyboard) that the snapshot does not list is still on
+screen, and a control you could not tap may have been covered or cut off.
 
 ## Stop the segment when
 
@@ -119,8 +132,8 @@ Apple's App Store sheet, which cannot load in this test setup.
 
 ## Reply
 
-Pass this object to the `StructuredOutput` tool. Put the `path` each
-`screenshot` call returned into the matching step or finding.
+Pass this object to the `StructuredOutput` tool. Put each screenshot's
+number ("1" or "2") into the matching step or finding.
 
 ```json
 {
@@ -134,7 +147,7 @@ Pass this object to the `StructuredOutput` tool. Put the `path` each
       "intent": "Why you did it",
       "result": "success | no_effect | unexpected",
       "observation": "What changed",
-      "screenshot": "/path/from/screenshot or null"
+      "screenshot": "1, 2, or null"
     }
   ],
   "findings": [
@@ -144,7 +157,7 @@ Pass this object to the `StructuredOutput` tool. Put the `path` each
       "title": "One line",
       "details": "What you did, what you expected, what happened",
       "step": "Number of the step in this reply where you saw it, starting at 1",
-      "screenshot": "/path/from/screenshot (required)"
+      "screenshot": "1 or 2 (null only when both are taken and neither shows the problem)"
     }
   ]
 }

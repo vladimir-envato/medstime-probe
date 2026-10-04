@@ -24,6 +24,10 @@ through iCloud. Premium features sit behind a subscription paywall.
 - First launch shows onboarding: three welcome pages, then iCloud, alarms, and
   notifications screens. A paywall may follow.
 - The UI is dark mode only.
+- Add Medication steps and the medication summary have a fixed button at the
+  bottom (Next or Done) over a scrolling list. Controls lower in the list
+  (Add time, the dose + and -, Times) sit under that button until you scroll
+  up.
 - Use made-up medication names and doses, never real personal data.
 
 ## Launch arguments

@@ -109,8 +109,10 @@
             "minimum": 1
           },
           "screenshot": {
-            "type": "string",
-            "minLength": 1
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

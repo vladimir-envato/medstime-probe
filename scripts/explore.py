@@ -20,6 +20,7 @@ that model without extended thinking and without --effort.
 Progress is written to <run dir>/status.json and runs/latest.json for the web UI.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -57,6 +58,9 @@ PERMISSIONS = {
     True: "Always allow notifications and alarms: on app screens that ask for them tap Allow or Continue, and "
           "on the system alerts tap Allow.",
 }
+# Screenshots the bot may take per segment. It sees each one, and every image stays in its
+# context for the rest of the segment.
+SCREENSHOT_LIMIT = 2
 SEGMENT_STEPS = 10
 MIN_SEGMENT_STEPS = 3
 SEVERITY = ["crash", "bug", "ux", "minor"]
@@ -65,7 +69,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay {tap_delay}); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. {permissions} Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay {tap_delay}); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. A control under something fixed over the content (a bottom button or bar, the keyboard, a banner, a sheet) or cut off at the screen edge is still listed in the snapshot, but a tap on it hits what is on top or nothing: scroll it into the open first. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Screenshots: call screenshot with returnFormat "base64" so the image comes back to you, and look at it. Take at most {screenshot_limit} in this segment, numbered 1, 2 in the order you take them, and refer to them by that number. Take one when a tap had no effect or opened an unexpected screen (if the control was covered or cut off, scroll and retry; that is not a finding), when something looks wrong and you will report it, and when a banner or popup drops in from the top (the purple error popup), which you report as a finding quoting its text. Every finding needs a screenshot that shows the problem; reuse an earlier one if it does, and use null only when both are taken and neither shows it. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. {permissions} Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -556,7 +560,8 @@ class Live:
 def rules(m):
     """RULES with the scenario's tap delay and permission answers filled in."""
     return (RULES.replace("{tap_delay}", f"{m['tapDelay']:g}")
-            .replace("{permissions}", PERMISSIONS[m["allowAlarms"]]))
+            .replace("{permissions}", PERMISSIONS[m["allowAlarms"]])
+            .replace("{screenshot_limit}", str(SCREENSHOT_LIMIT)))
 
 
 def build_prompt(run):
@@ -716,6 +721,56 @@ def matches(value, schema):
     return True
 
 
+def segment_images(path):
+    """Screenshots in a segment log, in the order the bot took them, as (bytes, suffix). A claude -p
+    stream carries them as tool_result image blocks, a Codex stream as mcp_tool_call results."""
+    images = []
+    for line in path.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        message = event.get("message") or {}
+        if event.get("type") == "user" and isinstance(message.get("content"), list):
+            for block in message["content"]:
+                if block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+                    images += [(c["source"]["data"], c["source"].get("media_type"))
+                               for c in block["content"] if c.get("type") == "image"]
+        item = event.get("item") or {}
+        if event.get("type") == "item.completed" and item.get("type") == "mcp_tool_call":
+            images += [(c["data"], c.get("mimeType")) for c in (item.get("result") or {}).get("content") or []
+                       if c.get("type") == "image"]
+    return [(base64.b64decode(data), ".png" if mime == "image/png" else ".jpg") for data, mime in images]
+
+
+def drop_images(path, session_id):
+    """Removes screenshot data once the findings' screenshots are saved: from the segment log, and
+    the copies Claude Code keeps in the session's tool-results folder."""
+    def strip(value):
+        if isinstance(value, list):
+            return [strip(v) for v in value]
+        if not isinstance(value, dict):
+            return value
+        value = {k: strip(v) for k, v in value.items()}
+        if value.get("type") == "image":
+            if "data" in value:
+                value["data"] = "[removed]"
+            if isinstance(value.get("source"), dict) and "data" in value["source"]:
+                value["source"] = {**value["source"], "data": "[removed]"}
+        return value
+
+    lines = []
+    for line in path.read_text().splitlines():
+        try:
+            lines.append(json.dumps(strip(json.loads(line)), ensure_ascii=False))
+        except ValueError:
+            lines.append(line)
+    path.write_text("\n".join(lines) + "\n")
+    if session_id:
+        for folder in (Path.home() / ".claude" / "projects").glob(f"*/{session_id}/tool-results"):
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 def slug(text):
     return re.sub(r"[^a-z0-9]+", "-", (text or "screen").lower()).strip("-")[:40] or "screen"
 
@@ -732,19 +787,21 @@ def record_segment(run, data, result):
                           "screenshot": None}],
         }
 
+    log = run.dir / f"segment-{segment}.jsonl"
+    images = segment_images(log) if log.exists() else []
     copied = {}
 
     def copy_shot(source, number, label):
-        if not source:
+        """Saves the bot's screenshot number source (1, 2, ...) of this segment."""
+        index = str(source or "").strip()
+        if not index.isdigit() or not 1 <= int(index) <= len(images):
             return None
-        if source not in copied:
-            path = Path(source)
-            if not path.exists():
-                return None
-            name = f"{number:03d}-{slug(label)}{path.suffix or '.png'}"
-            shutil.copy(path, run.dir / "screenshots" / name)
-            copied[source] = f"screenshots/{name}"
-        return copied[source]
+        if index not in copied:
+            data, suffix = images[int(index) - 1]
+            name = f"{number:03d}-{slug(label)}{suffix}"
+            (run.dir / "screenshots" / name).write_bytes(data)
+            copied[index] = f"screenshots/{name}"
+        return copied[index]
 
     new_steps = []
     for step in data["steps"]:
@@ -766,7 +823,7 @@ def record_segment(run, data, result):
         new_findings.append(record)
 
     entry = {"segment": segment, "status": data["status"], "summary": data["summary"],
-             "steps": len(new_steps), "costUSD": round(result.get("total_cost_usd") or 0, 4),
+             "steps": len(new_steps), "screenshots": len(images), "costUSD": round(result.get("total_cost_usd") or 0, 4),
              "parsedFromText": bool(result.get("parsedFromText"))}
     run.steps += new_steps
     run.findings += new_findings
@@ -774,6 +831,8 @@ def record_segment(run, data, result):
     run.append_jsonl("steps.jsonl", new_steps)
     run.append_jsonl("findings.jsonl", new_findings)
     run.append_jsonl("segments.jsonl", [entry])
+    if log.exists():
+        drop_images(log, result.get("session_id"))
     return data["status"]
 
 

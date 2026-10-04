@@ -92,10 +92,10 @@ Each run writes to `runs/<date>-<app>-<scenario>/`:
 | `report.md` | Outcome, cost and tokens, summary, analysis, stats, findings with screenshots, and the path the bot took (steps with a finding link to it) |
 | `steps.jsonl` | One line per action: screen, action, target, intent, result, screenshot |
 | `findings.jsonl` | One line per problem: severity, screen, title, details, step, screenshot |
-| `segments.jsonl` | One line per segment: status, summary, steps, cost |
+| `segments.jsonl` | One line per segment: status, summary, steps, screenshots taken, cost |
 | `status.json` | Live progress for the web UI (also copied to `runs/latest.json`) |
 | `run.json` | The resolved app config and scenario |
-| `screenshots/` | One per finding, taken while the problem was on screen |
+| `screenshots/` | One per finding, taken while the problem was on screen, saved from the segment log; other screenshots are not kept |
 | `segment-<n>.jsonl`, `report-model.json(l)` | Raw Claude Code or Codex output, for debugging |
 
 `runs/` is not committed.
@@ -148,8 +148,23 @@ to a model.
   `tapDelay`), and focuses a text field and
   checks for the keyboard before typing. Short taps were often ignored, and
   typing into an unfocused field is silently lost.
-- **Screenshots** only when something looks wrong: every finding must carry
-  one (the schema rejects a finding without it), and nothing else gets one.
+- **Screenshots**: the bot takes them with `returnFormat: "base64"`, so the
+  image comes back to the model and it actually sees the screen (with `path`
+  it only got a file path it could not open). It takes at most two per
+  segment (`SCREENSHOT_LIMIT` in `explore.py`), since every image stays in
+  its context for the rest of the segment: when a tap had no effect or opened
+  an unexpected screen, when something looks wrong, and for the purple error
+  popup. It refers to them by number (1, 2); `explore.py` takes those images
+  from the segment log (Claude's tool results or Codex's MCP results), saves
+  the ones a step or finding names into `screenshots/`, then removes all image
+  data from the log and deletes the copies Claude Code keeps under
+  `~/.claude/projects/.../<session>/tool-results/`. A finding needs a
+  screenshot unless both are used and neither shows the problem.
+- **Covered controls**: the snapshot lists a control even when a fixed
+  button, bar, keyboard, or sheet covers it, or the screen edge cuts it off;
+  a tap there hits what is on top. The bot scrolls such a control into the
+  open first, and when a tap has no effect or opens an unexpected screen it
+  checks a screenshot for this before it reports anything.
 - **Paywalls**: the bot buys a plan; the purchase sheet is a test environment
   (local StoreKit, or the sandbox Apple Account signed in on the simulator under
   Settings → Developer), so nothing is charged. Sandbox purchases stay on that
