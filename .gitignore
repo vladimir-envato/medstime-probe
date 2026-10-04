@@ -13,3 +13,6 @@ runs/*
 
 # Build products from scripts/explore.py
 .build/
+
+# Local docs, not in version control
+docs/
