@@ -147,6 +147,11 @@ to a model.
   `wait_for_ui` only when that screen still looks mid-animation. Waiting
   after every action doubled the model turns per step and, in measured runs,
   always returned the same screen.
+- **Swipes**: `swipe` scrolls a container and runs through its middle, and
+  MobileBuildMCP offers it only on scroll containers, never on a list row. To
+  reveal a row's swipe actions (Delete, Archive), the bot uses `drag` on the
+  row's own text, image, or button, which starts on that element. Without it,
+  a row swipe landed in the middle of the list, below the row.
 - **Taps**: the bot taps with a 0.15 s touch (a scenario can set another with
   `tapDelay`), and focuses a text field and
   checks for the keyboard before typing. Short taps were often ignored, and

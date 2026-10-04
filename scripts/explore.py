@@ -433,10 +433,10 @@ class BuildFailed(Exception):
 # ---------- segments ----------
 
 TOOL_NAMES = {"snapshot_ui": "look", "wait_for_ui": "wait", "tap": "tap", "touch": "tap", "batch": "tap (batch)",
-              "long_press": "long press", "swipe": "swipe", "type_text": "type", "button": "button",
+              "long_press": "long press", "swipe": "swipe", "drag": "drag", "type_text": "type", "button": "button",
               "key_press": "key", "screenshot": "screenshot", "launch_app_sim": "relaunch", "StructuredOutput": "report"}
 # Tools that act on the app; each call is one step.
-APP_ACTIONS = {"touch", "tap", "type_text", "swipe", "long_press", "button", "key_press"}
+APP_ACTIONS = {"touch", "tap", "type_text", "swipe", "drag", "long_press", "button", "key_press"}
 TARGET = re.compile(r"(e\d+)\|[^|]*\|([^|]*)\|([^|]*)\|")
 
 
@@ -540,7 +540,7 @@ class Live:
         detail = self.labels.get(ref, ref or "")
         if name == "type_text":
             detail = f"{detail}: {args.get('text', '')}"
-        elif name == "swipe":
+        elif name in ("swipe", "drag"):
             detail = f"{args.get('direction', '')} {detail}".strip()
         elif name == "wait_for_ui":
             detail = args.get("predicate", "")

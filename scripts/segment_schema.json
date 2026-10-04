@@ -43,6 +43,7 @@
               "tap",
               "type_text",
               "swipe",
+              "drag",
               "long_press",
               "button",
               "key_press"
