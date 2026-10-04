@@ -169,11 +169,23 @@ const STATES = {preparing: "Preparing", building: "Building", installing: "Insta
                 reporting: "Report", done: "Done", failed: "Failed"};
 
 async function api(path, body) {
-  const res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
-                                        body: JSON.stringify(body)} : {});
+  let res;
+  try {
+    res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
+                                    body: JSON.stringify(body)} : {});
+  } catch {
+    throw new Error("Can't reach the server. Is scripts/server.py running?");
+  }
   const data = await res.json().catch(() => ({}));
+  // A 404 on an API call means the running server predates this page.
+  if (res.status === 404) throw new Error("The server is older than this page. Restart scripts/server.py and reload.");
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+// Shows a failed form action under the buttons, named so it is clear which button it came from.
+function showError(action, e) {
+  $("error").textContent = `${action} failed: ${e.message}`;
 }
 
 function fillScenarios() {
@@ -488,8 +500,9 @@ $("app").onchange = fillScenarios;
 $("scenario").onchange = syncSteps;
 $("personaPick").onchange = syncPersona;
 $("model").onchange = syncEffort;
+// Any of the three buttons clears the previous error before it acts.
+["start", "stop", "clear"].forEach(id => $(id).addEventListener("click", () => { $("error").textContent = ""; }));
 $("start").onclick = async () => {
-  $("error").textContent = "";
   try {
     await api("/api/start", {app: $("app").value, scenario: $("scenario").value,
                              steps: Number($("steps").value) || null, model: $("model").value, effort: $("effort").dataset.unsupported ? "" : $("effort").value,
@@ -500,17 +513,17 @@ $("start").onclick = async () => {
                              goal: $("goal").value});
     $("reportPanel").hidden = true;
     setTimeout(poll, 500);
-  } catch (e) { $("error").textContent = e.message; }
+  } catch (e) { showError("Start", e); }
 };
 $("stop").onclick = async () => {
-  try { await api("/api/stop", {}); } catch (e) { $("error").textContent = e.message; }
+  try { await api("/api/stop", {}); } catch (e) { showError("Stop", e); }
 };
 $("clear").onclick = async () => {
   try {
     await api("/api/clear", {});
     resetLive();
     resetForm();
-  } catch (e) { $("error").textContent = e.message; }
+  } catch (e) { showError("Clear", e); }
 };
 
 syncEffort();
