@@ -144,7 +144,8 @@ to a model.
   `wait_for_ui` only when that screen still looks mid-animation. Waiting
   after every action doubled the model turns per step and, in measured runs,
   always returned the same screen.
-- **Taps**: the bot taps with a 0.15 s touch, and focuses a text field and
+- **Taps**: the bot taps with a 0.15 s touch (a scenario can set another with
+  `tapDelay`), and focuses a text field and
   checks for the keyboard before typing. Short taps were often ignored, and
   typing into an unfocused field is silently lost.
 - **Screenshots** only when something looks wrong: every finding must carry
@@ -156,7 +157,8 @@ to a model.
   Cancel Subscription or Manage Subscriptions: they open Apple's App Store
   sheet, which cannot load a mock-store purchase. It never signs in to an Apple
   Account and reports a finding if asked to.
-- **Permissions**: the bot always allows notifications and skips alarms.
+- **Permissions**: the bot always allows notifications and skips alarms; a
+  scenario with `allowAlarms: true` makes it allow alarms too.
 - **Settings is off limits**: the bot never opens the iOS Settings app or
   presses Home. If another app comes to the front anyway, it taps "◀ <app>"
   in the status bar. When the snapshot does not list that link, it ends the
@@ -199,6 +201,8 @@ Scenario front matter:
 | `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account) |
 | `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as Autonomous - Fast random taps (`autonomous-fast`); a `:no-thinking` model does the same for one run |
 | `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
+| `allowAlarms` | `true` makes the bot allow alarms as well as notifications, in onboarding and on the system alerts; by default it skips alarms. Used by Autonomous - Full app, permissions allowed (`autonomous-full-app`) |
+| `tapDelay` | Touch length of a tap in seconds; default `0.15`. `autonomous-full-app` uses `0.165` |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 `Done when` for open-ended exploration.

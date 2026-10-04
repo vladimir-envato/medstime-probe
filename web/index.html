@@ -89,6 +89,7 @@
       <div class="hint" id="scenarioGoal" style="white-space: pre-wrap; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;"></div>
       <div class="hint" id="scenarioSkip" hidden>Onboarding is skipped: after a fresh install the app opens straight on Schedule.</div>
       <div class="hint" id="scenarioThinking" hidden>The bot runs without thinking (faster, less careful). Applies to Claude models.</div>
+      <div class="hint" id="scenarioAlarms" hidden>The bot allows alarms as well as notifications.</div>
       <label for="goal">Prompt (optional)</label>
       <textarea id="goal" rows="4" placeholder="Empty = the bot follows the scenario goal."></textarea>
       <div class="hint">A prompt replaces the scenario goal for this run, and the run has no fixed end: the bot explores until the steps run out.</div>
@@ -190,6 +191,7 @@ function syncSteps() {
   $("scenarioGoal").textContent = currentScenario()?.goal || "";
   $("scenarioSkip").hidden = !currentScenario()?.skipOnboarding;
   $("scenarioThinking").hidden = !currentScenario()?.thinkingOff;
+  $("scenarioAlarms").hidden = !currentScenario()?.allowAlarms;
   $("personaPick").value = "";
   syncPersona();
 }
@@ -401,6 +403,7 @@ function unlockForm() {
   $("scenarioGoal").textContent = currentScenario()?.goal || "";
   $("scenarioSkip").hidden = !currentScenario()?.skipOnboarding;
   $("scenarioThinking").hidden = !currentScenario()?.thinkingOff;
+  $("scenarioAlarms").hidden = !currentScenario()?.allowAlarms;
   syncEffort();
 }
 

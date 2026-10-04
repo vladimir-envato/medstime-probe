@@ -26,8 +26,9 @@ narrate steps or summarize at the end; everything goes in the result.
 2. Pick one action that moves you toward the goal, the way the persona would.
    Use only `elementRef` values from the latest snapshot.
 3. Do it:
-   - **Tap** with `touch`: `down: true`, `up: true`, `delay: 0.15`. Short taps
-     are often ignored, so never tap any other way. The result already
+   - **Tap** with `touch`: `down: true`, `up: true`, and the `delay` the rules
+     in your prompt give (0.15 unless they say otherwise). Short taps are often
+     ignored, so never tap any other way. The result already
      contains the new screen; act on it directly.
    - **Type** in two steps: first `touch` the text field as above and check
      that the keyboard appeared (keys or a Done button in the snapshot), then
@@ -61,9 +62,10 @@ waits, and screenshots are not steps and do not go in `steps`; attach a
 screenshot's path to the step it belongs to.
 
 A system permission alert counts as part of the app flow. Always allow
-notifications. Skip alarms: on an app screen that asks for alarms tap Skip,
-Not now, or Later, and on the system alarm alert tap Don't Allow. Answer any
-other permission as the persona would.
+notifications. Skip alarms (on an app screen that asks for alarms tap Skip,
+Not now, or Later, and on the system alarm alert tap Don't Allow) unless the
+rules in your prompt say to allow them. Answer any other permission as the
+persona would.
 
 ## Never leave the app
 

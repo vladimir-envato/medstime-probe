@@ -50,6 +50,13 @@ NARRATE_NOTE = ("Narration is on for this run, overriding \"Work silently\": bef
                 "write one short sentence saying what you are about to do and why.")
 CODEX_NOTE = ("There is no StructuredOutput tool here: wherever these instructions say to call it, "
               "make your final message the JSON result itself, with nothing else around it.")
+# Touch length for a tap, in seconds, unless a scenario sets tapDelay.
+TAP_DELAY = 0.15
+PERMISSIONS = {
+    False: "Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert).",
+    True: "Always allow notifications and alarms: on app screens that ask for them tap Allow or Continue, and "
+          "on the system alerts tap Allow.",
+}
 SEGMENT_STEPS = 10
 MIN_SEGMENT_STEPS = 3
 SEVERITY = ["crash", "bug", "ux", "minor"]
@@ -58,7 +65,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay 0.15); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. Always allow notifications; skip alarms (Skip or Not now, Don't Allow on the system alert). Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap only with touch (down true, up true, delay {tap_delay}); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Take a screenshot only when something looks wrong, while it is on screen; every finding needs one, and nothing else does. Always take a screenshot, while it is on screen, when a banner or popup drops in from the top (the purple error popup) and report it as a finding quoting its text. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. {permissions} Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -213,6 +220,8 @@ class Run:
             # ":no-thinking" model.
             "thinking": "off" if no_thinking else meta.get("thinking", "on"),
             "onboardingDefaults": config.get("skipOnboardingDefaults", {}),
+            "tapDelay": float(meta.get("tapDelay", TAP_DELAY)),
+            "allowAlarms": bool(meta.get("allowAlarms")),
             # App-wide launch arguments (app.md) come first, then the scenario's own.
             "launchArgs": config.get("launchArgs", []) + meta.get("launchArgs", []),
             "simulatorId": config.get("simulatorId") or resolve_udid(config["simulatorName"]),
@@ -544,6 +553,12 @@ class Live:
 
 
 
+def rules(m):
+    """RULES with the scenario's tap delay and permission answers filled in."""
+    return (RULES.replace("{tap_delay}", f"{m['tapDelay']:g}")
+            .replace("{permissions}", PERMISSIONS[m["allowAlarms"]]))
+
+
 def build_prompt(run):
     m = run.meta
     steps_left = m["maxSteps"] - len(run.steps)
@@ -554,7 +569,7 @@ def build_prompt(run):
             f"Persona: {m['persona']}\n"
             f"App notes: {m['appNotes']}\n"
             f"Earlier segments: {earlier}\n"
-            f"Steps in this segment: {segment_budget(steps_left)}\n\n{RULES}"
+            f"Steps in this segment: {segment_budget(steps_left)}\n\n{rules(m)}"
             + (f"\n\n{NARRATE_NOTE}" if m["narrate"] else ""))
 
 
