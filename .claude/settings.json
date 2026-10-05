@@ -1,8 +1,12 @@
 {
-  "enabledMcpjsonServers": ["mobilebuildmcp"],
+  "enabledMcpjsonServers": [
+    "mobilebuildmcp",
+    "probe-tools"
+  ],
   "permissions": {
     "allow": [
       "mcp__mobilebuildmcp",
+      "mcp__probe-tools",
       "Skill(probe)",
       "Bash(python3 scripts/explore.py:*)"
     ]

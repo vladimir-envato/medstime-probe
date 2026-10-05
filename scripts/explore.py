@@ -69,7 +69,7 @@ TOKEN_KINDS = {"input": "inputTokens", "cacheRead": "cacheReadInputTokens",
                "cacheWrite": "cacheCreationInputTokens", "output": "outputTokens"}
 MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"]
 
-RULES = """Tap only with touch (down true, up true, delay {tap_delay}); short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. A control under something fixed over the content (a bottom button or bar, the keyboard, a banner, a sheet) or cut off at the screen edge is still listed in the snapshot, but a tap on it hits what is on top or nothing: scroll it into the open first. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Screenshots: call screenshot with returnFormat "base64" so the image comes back to you, and look at it. Take at most {screenshot_limit} in this segment, numbered 1, 2 in the order you take them, and refer to them by that number. Take one when a tap had no effect or opened an unexpected screen (if the control was covered or cut off, scroll and retry; that is not a finding), when something looks wrong and you will report it, and when a banner or popup drops in from the top (the purple error popup), which you report as a finding quoting its text. Every finding needs a screenshot that shows the problem; reuse an earlier one if it does, and use null only when both are taken and neither shows it. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. {permissions} Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
+RULES = """Tap with safe_tap (delay {tap_delay}), which taps only where the control is on top; use touch (down true, up true, delay {tap_delay}) only for an element with neither label nor value. Short taps are often ignored. Before typing, touch the text field and check that the keyboard appeared, then type_text, then check the field shows the text. Act on the snapshot each action returns; call wait_for_ui with predicate "settled" only when that snapshot looks mid-change (spinner, empty or half-drawn screen, sheet or alert still sliding in), never by default. Before marking a step no_effect, wait for settled and retry once; only report a control as broken if the retry also fails. Screenshots: call screenshot with returnFormat "base64" so the image comes back to you, and look at it. Take at most {screenshot_limit} in this segment, numbered 1, 2 in the order you take them, and refer to them by that number. Take one when a tap had no effect or opened an unexpected screen, when something looks wrong and you will report it, and when a banner or popup drops in from the top (the purple error popup), which you report as a finding quoting its text. Every finding needs a screenshot that shows the problem; reuse an earlier one if it does, and use null only when both are taken and neither shows it. Use made-up names for anything you enter (for example \"Testamin 10 mg\"), never real medications or personal data. On a paywall, buy: pick a plan, tap Continue/Subscribe, and confirm the purchase sheet if one appears (with the app's mock store the purchase completes with no sheet; a sheet says \"Environment: Xcode\" or \"Environment: Sandbox\"; all are test environments, so nothing is charged). Never type a password or sign in to an Apple Account; if a sign-in prompt appears, cancel it and report a finding. Never tap Cancel Subscription or Manage Subscriptions: they open Apple's App Store sheet, which cannot load in this test setup. {permissions} Never open the iOS Settings app and never press Home; if another app comes to the front, tap the \"◀ <app name>\" link in the top-left corner; if the snapshot does not list it, stop the segment at once with status left_app and the program brings the app back. Leaving the app is not a crash. Stay within this segment's step budget. Work silently. Finish with a real call to the StructuredOutput tool; never write the JSON as text."""
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -106,15 +106,21 @@ def is_openai(model):
     return bool(model) and model.startswith("gpt-")
 
 
-def codex_mcp_config(tools):
-    """-c overrides that give codex exec the project's MobileBuildMCP server, limited to tools."""
-    server = json.loads((ROOT / ".mcp.json").read_text())["mcpServers"]["mobilebuildmcp"]
-    env = ", ".join(f"{k} = {json.dumps(v)}" for k, v in server.get("env", {}).items())
-    key = "mcp_servers.mobilebuildmcp"
-    return ["-c", f"{key}.command={json.dumps(server['command'])}",
-            "-c", f"{key}.args={json.dumps(server.get('args', []))}",
-            "-c", f"{key}.env={{{env}}}",
-            "-c", f"{key}.enabled_tools={json.dumps(tools)}"]
+def codex_mcp_config(agent_tools):
+    """-c overrides that give codex exec the project's MCP servers, each limited to the agent's tools."""
+    overrides = []
+    for name, server in json.loads((ROOT / ".mcp.json").read_text())["mcpServers"].items():
+        prefix = f"mcp__{name}__"
+        tools = [t.removeprefix(prefix) for t in agent_tools if t.startswith(prefix)]
+        if not tools:
+            continue
+        env = ", ".join(f"{k} = {json.dumps(v)}" for k, v in server.get("env", {}).items())
+        key = f"mcp_servers.{name}"
+        overrides += ["-c", f"{key}.command={json.dumps(server['command'])}",
+                      "-c", f"{key}.args={json.dumps(server.get('args', []))}",
+                      "-c", f"{key}.env={{{env}}}",
+                      "-c", f"{key}.enabled_tools={json.dumps(tools)}"]
+    return overrides
 
 
 def codex_exec(model, effort, schema_path, prompt, extra=()):
@@ -433,11 +439,11 @@ class BuildFailed(Exception):
 
 # ---------- segments ----------
 
-TOOL_NAMES = {"snapshot_ui": "look", "wait_for_ui": "wait", "tap": "tap", "touch": "tap", "batch": "tap (batch)",
+TOOL_NAMES = {"snapshot_ui": "look", "wait_for_ui": "wait", "tap": "tap", "touch": "tap", "safe_tap": "tap", "batch": "tap (batch)",
               "long_press": "long press", "swipe": "swipe", "drag": "drag", "type_text": "type", "button": "button",
               "key_press": "key", "screenshot": "screenshot", "launch_app_sim": "relaunch", "StructuredOutput": "report"}
 # Tools that act on the app; each call is one step.
-APP_ACTIONS = {"touch", "tap", "type_text", "swipe", "drag", "long_press", "button", "key_press"}
+APP_ACTIONS = {"touch", "safe_tap", "tap", "type_text", "swipe", "drag", "long_press", "button", "key_press"}
 TARGET = re.compile(r"(e\d+)\|[^|]*\|([^|]*)\|([^|]*)\|")
 
 
@@ -535,9 +541,9 @@ class Live:
         }])[-15:]
 
     def action(self, block):
-        name = block.get("name", "").removeprefix("mcp__mobilebuildmcp__")
+        name = block.get("name", "").removeprefix("mcp__mobilebuildmcp__").removeprefix("mcp__probe-tools__")
         args = block.get("input") or {}
-        ref = args.get("elementRef") or args.get("withinElementRef")
+        ref = args.get("elementRef") or args.get("withinElementRef") or args.get("label")
         detail = self.labels.get(ref, ref or "")
         if name == "type_text":
             detail = f"{detail}: {args.get('text', '')}"
@@ -636,8 +642,7 @@ def run_segment(run):
 def run_segment_codex(run):
     number = len(run.segments) + 1
     meta, instructions = parse_front_matter(AGENT)
-    tools = [t.strip().removeprefix("mcp__mobilebuildmcp__") for t in meta["tools"].split(",")
-             if t.strip().startswith("mcp__mobilebuildmcp__")]
+    tools = [t.strip() for t in meta["tools"].split(",") if t.strip().startswith("mcp__")]
     prompt = f"{instructions}\n\n{CODEX_NOTE}\n\n{build_prompt(run)}"
     (run.dir / f"segment-{number}-prompt.txt").write_text(prompt)
     live = Live(run, number)

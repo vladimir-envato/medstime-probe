@@ -156,6 +156,11 @@ to a model.
   reveal a row's swipe actions (Delete, Archive), the bot uses `drag` on the
   row's own text, image, or button, which starts on that element. Without it,
   a row swipe landed in the middle of the list, below the row.
+- **Covered controls**: MobileBuildMCP's `touch` taps the middle of an
+  element without checking what is there, so a control under a fixed bar (a
+  Next button, the keyboard) gave its tap to the bar. The bot taps with
+  `safe_tap` from `scripts/probe_tools.py` instead (see below), and keeps
+  `touch` only for elements with neither label nor value.
 - **Taps**: the bot taps with a 0.15 s touch (a scenario can set another with
   `tapDelay`), and focuses a text field and
   checks for the keyboard before typing. Short taps were often ignored, and
@@ -235,6 +240,28 @@ Scenario front matter:
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 `Done when` for open-ended exploration.
+
+## safe_tap (`scripts/probe_tools.py`)
+
+A second MCP server in `.mcp.json` (`probe-tools`), standard library only,
+with one tool. `safe_tap` takes a control's label (plus `index` and
+`elementType` when several match), hit-tests the control's middle with AXe
+(`describe-ui --point`), and taps only where the control itself is on top.
+If something covers it, it drags the content clear of the cover, slowly so
+it does not fling, and checks again, up to 3 times; then it reports what
+covers the control instead of tapping. It also skips the top 50 and bottom
+34 points, where iOS keeps touches for its own gestures. It returns text,
+so the bot calls `snapshot_ui` next. A tap takes about 1–2 s, or about 5 s
+with scrolling.
+
+AXe is `$AXE_PATH` if set, else the copy bundled with the MobileBuildMCP
+version `.mcp.json` pins, from the npx cache; the simulator is the one in
+`.mobilebuildmcp/config.yaml`, which `explore.py` writes for every run. Try it
+by hand on the current screen:
+
+```
+python3 scripts/probe_tools.py --tap "Decrement"
+```
 
 ## MobileBuildMCP
 
