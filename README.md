@@ -168,15 +168,16 @@ to a model.
 - **Screenshots**: the bot takes them with `returnFormat: "base64"`, so the
   image comes back to the model and it actually sees the screen (with `path`
   it only got a file path it could not open). It takes at most two per
-  segment (`SCREENSHOT_LIMIT` in `explore.py`), since every image stays in
+  segment by default (`SCREENSHOT_LIMIT` in `explore.py`; a scenario can set
+  `screenshotLimit`), since every image stays in
   its context for the rest of the segment: when a tap had no effect or opened
   an unexpected screen, when something looks wrong, and for the purple error
-  popup. It refers to them by number (1, 2); `explore.py` takes those images
+  popup. It refers to them by number (1, 2, ...); `explore.py` takes those images
   from the segment log (Claude's tool results or Codex's MCP results), saves
   the ones a step or finding names into `screenshots/`, then removes all image
   data from the log and deletes the copies Claude Code keeps under
   `~/.claude/projects/.../<session>/tool-results/`. A finding needs a
-  screenshot unless both are used and neither shows the problem.
+  screenshot unless all are used and none shows the problem.
 - **Covered controls**: the snapshot lists a control even when a fixed
   button, bar, keyboard, or sheet covers it, or the screen edge cuts it off;
   a tap there hits what is on top. The bot scrolls such a control into the
@@ -237,6 +238,7 @@ Scenario front matter:
 | `model` | Bot model for this scenario, for example `claude-sonnet-5-5`; default Haiku 4.5. The web UI preselects it, and `--model` or another choice in the UI replaces it |
 | `reportModel` | Model that writes the report, one of `claude-sonnet-5-5`, `claude-opus-5-5`, `gpt-6-sol`; default Sonnet 5.5. `--report-model` or the UI replaces it |
 | `tapDelay` | Touch length of a tap in seconds; default `0.15`. `autonomous-full-app` uses `0.165` |
+| `screenshotLimit` | Screenshots the bot may take per segment; default `2`. More screenshots let it document more findings, but each stays in its context for the rest of the segment. `mm-030` uses `3` |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 `Done when` for open-ended exploration.

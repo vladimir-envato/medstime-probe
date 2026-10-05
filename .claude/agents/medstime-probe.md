@@ -155,7 +155,7 @@ number ("1" or "2") into the matching step or finding.
       "intent": "Why you did it",
       "result": "success | no_effect | unexpected",
       "observation": "What changed",
-      "screenshot": "1, 2, or null"
+      "screenshot": "Screenshot number (1, 2, ...) or null"
     }
   ],
   "findings": [
