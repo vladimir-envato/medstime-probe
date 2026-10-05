@@ -11,8 +11,9 @@ simulatorName: iPhone 17 Pro
 launchArgs: ["-mock-store", "-hide-debug-tab"]
 # UserDefaults that a scenario with skipOnboarding: true writes after install, before launch.
 skipOnboardingDefaults: {"onboarding.finished": true}
-# Optional: pin an exact simulator by UDID (`xcrun simctl list devices`).
-# simulatorId:
+# Pins the exact simulator by UDID (`xcrun simctl list devices`): iPhone 17 Pro on iOS 26.5.
+# Without it, simulatorName picks the newest iOS runtime with that name.
+simulatorId: 7B34DDF1-D35D-44A2-A24B-5732C1BB10F0
 ---
 
 Medication reminder app. Users add medications with doses and times, get
