@@ -31,8 +31,8 @@ through iCloud. Premium features sit behind a subscription paywall.
   up.
 - A medication time (the time button next to each dose on Medication Times)
   opens a small popover with two wheels, hours and minutes in steps of 5.
-  Set it with `turn_wheel` (index 0 hours, 1 minutes), then read the time
-  from the button's value in the next snapshot. Tap outside the popover, or
+  Set it with `turn_wheel` (index 0 hours, 1 minutes); it returns the time
+  the button now shows. Minutes do not carry into hours. Tap outside the popover, or
   the next control, to close it.
 - Use made-up medication names and doses, never real personal data.
 

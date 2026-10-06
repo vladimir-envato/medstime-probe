@@ -53,8 +53,10 @@ narrate steps or summarize at the end; everything goes in the result.
      (0 hours, 1 minutes). Wheels have no elementRef, so never `drag` or
      `swipe` inside a picker popover: the only ref there is `dismiss popup`,
      the area around it, and dragging it closes the picker. Count the rows
-     from the current value (21 to 08 is -13), then call `snapshot_ui` and
-     read the new value from the control that opened the picker.
+     from the current value (21 to 08 is -13). Hours and minutes are separate
+     wheels: turning minutes past 55 to 00 does not change the hour. The tool
+     returns the time now shown ("Time Picker: 08:00"); turn again until it
+     is the time you want.
    - `long_press`, or `button` (home).
    Do not wait by default: the snapshot an action returns is usually already
    settled. Call `wait_for_ui` with predicate `settled` only when that

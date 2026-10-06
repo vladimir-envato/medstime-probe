@@ -585,7 +585,15 @@ def build_prompt(run):
             f"App notes: {m['appNotes']}\n"
             f"Earlier segments: {earlier}\n"
             f"Steps in this segment: {segment_budget(steps_left)}\n\n{rules(m)}"
+            + (f"\n\n{IDLE_NOTE}" if run.segments and run.segments[-1]["steps"] == 0 else "")
             + (f"\n\n{NARRATE_NOTE}" if m["narrate"] else ""))
+
+
+# Sent after a segment that took no step, which usually means the bot stopped
+# with work left; a second empty segment in a row ends the run as stuck.
+IDLE_NOTE = ("The last segment took no step. Do not stop early: compare the goal and Done when with the "
+             "earlier segments, pick the first check that is not done yet, and work on it now. Finish with "
+             "status goal_reached only when every Done when item is done.")
 
 
 def segment_budget(steps_left):
@@ -1032,7 +1040,7 @@ def main():
                 break
             relaunch_app(run)
             continue
-        if run.segments[-1]["steps"] == 0:
+        if run.segments[-1]["steps"] == 0 and len(run.segments) > 1 and run.segments[-2]["steps"] == 0:
             status = "stuck"
             break
 

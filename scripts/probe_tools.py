@@ -215,7 +215,8 @@ def wheels(nodes, label=None):
 def turn_wheel(rows, index=0, label=None):
     """Turn a wheel by rows: positive shows later values (the wheel moves up), negative earlier."""
     screen = Screen()
-    found = wheels(screen.tree(), label)
+    nodes = screen.tree()
+    found = wheels(nodes, label)
     if index >= len(found):
         named = f" labeled '{label}'" if label else ""
         return False, f"No wheel{named} at index {index} on screen ({len(found)} found). Open the picker first."
@@ -231,12 +232,31 @@ def turn_wheel(rows, index=0, label=None):
         screen.drag((cx, cy + distance / 2), (cx, cy - distance / 2))
         time.sleep(0.7)
         left -= step
-    after_nodes = wheels(screen.tree(), label)
+    after_tree = screen.tree()
+    after_nodes = wheels(after_tree, label)
     after = after_nodes[index].get("AXValue") if index < len(after_nodes) else None
     name = describe(wheel) if wheel.get("AXLabel") else f"wheel {index}"
     if after == before and rows:
         return False, f"Dragged {name} by {rows} rows, but its value did not change ({before})."
-    return True, f"Turned {name} by {rows} rows. Read the new value from the control's snapshot."
+    # The wheels' own values are raw positions; the control that opened the picker shows the result.
+    shown = changed_values(nodes, after_tree) or picker_values(after_tree)
+    result = f" Now shown: {', '.join(shown)}." if shown else " Read the new value from the snapshot."
+    return True, f"Turned {name} by {rows} rows.{result}"
+
+
+def labeled_values(nodes):
+    return {(n.get("type"), n.get("AXLabel")): n.get("AXValue") for n in flatten(nodes)
+            if n.get("AXLabel") and n.get("AXValue") and "scroll bar" not in n["AXLabel"].lower()}
+
+
+def changed_values(before_nodes, after_nodes):
+    """Labeled controls whose value changed, such as "Time Picker: 08:00"."""
+    before = labeled_values(before_nodes)
+    return [f"{key[1]}: {value}" for key, value in labeled_values(after_nodes).items() if before.get(key) != value]
+
+
+def picker_values(nodes):
+    return [f"{label}: {value}" for (_, label), value in labeled_values(nodes).items() if "picker" in label.lower()]
 
 
 TOOLS = [{
@@ -268,7 +288,8 @@ TOOLS = [{
         "rows. Picker wheels have no elementRef in the snapshot, so use this instead of drag or "
         "swipe. Wheels are numbered from 0, left to right (hours 0, minutes 1 in a time picker). "
         "Positive rows show later values, negative rows earlier ones; values wrap around. "
-        "Afterwards call snapshot_ui and read the new value from the control that opened the picker."),
+        "Hours and minutes are separate wheels: turning minutes past 55 to 00 does not change the hour. "
+        "Returns the value now shown by the control that opened the picker, e.g. 'Time Picker: 08:00'."),
     "inputSchema": {
         "type": "object",
         "properties": {

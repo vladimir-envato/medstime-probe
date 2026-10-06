@@ -139,6 +139,12 @@ to a model.
   as step 1. Segments have 10 steps; a tail under 3 steps joins the previous
   segment (`SEGMENT_STEPS` and `MIN_SEGMENT_STEPS` in `explore.py`). Longer
   segments did not cost less: they read less cache but wrote more output.
+- **Empty segments**: a segment that takes no step usually means the bot
+  stopped with checks left, not that the app is stuck. The next segment gets
+  `IDLE_NOTE` (pick the first check not done yet and work on it); only a
+  second empty segment in a row ends the run as stuck. Earlier, one empty
+  segment ended the run, and two MM-030 runs stopped at 132 and 140 of 300
+  steps with work left.
 - **Structured result**: the bot returns its segment log through the
   `StructuredOutput` tool, which Claude Code checks against
   `scripts/segment_schema.json`. If Haiku writes the JSON as text instead,
@@ -274,7 +280,11 @@ which is how an earlier run lost its 08:00 times. `turn_wheel` finds the
 wheels in the AXe tree (unlabeled `Slider` elements that are not scroll bars),
 and drags the chosen one slowly through its middle, at most 3 rows of 31 pt
 per drag, so it moves by exactly that many rows without a fling. It reports
-an error when the wheel's value did not change. With the picker open:
+an error when the wheel's value did not change, and otherwise returns the value
+now shown by the control that opened the picker ("Time Picker: 08:00"): the
+wheels' own values are raw positions, and hours and minutes are separate
+wheels, so turning minutes past 55 does not change the hour. Without that
+value a run kept landing one hour short. With the picker open:
 
 ```
 python3 scripts/probe_tools.py --wheel -13 0
