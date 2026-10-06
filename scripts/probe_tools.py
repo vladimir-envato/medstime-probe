@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""MCP server with safe_tap: a tap that first checks the control is on top.
+"""MCP server with safe_tap, a tap that first checks the control is on top, and
+turn_wheel, which turns a picker wheel by whole rows.
 
 MobileBuildMCP's touch taps the middle of an element without checking what is
 there, so a control under a fixed bar (a Next button, the keyboard) gets a tap
 meant for it delivered to the bar. safe_tap hit-tests the point with AXe
 (`describe-ui --point`), scrolls the content if something covers it, and taps
 only a point where the control itself is on top.
+
+Picker wheels (the time picker's hour and minute columns) have no label, so
+MobileBuildMCP lists no elementRef for them and the bot cannot drag them.
+turn_wheel finds them in the AXe tree and drags them slowly, a few rows at a
+time.
 
 Speaks MCP over stdio (newline-delimited JSON-RPC), standard library only. The
 simulator comes from .mobilebuildmcp/config.yaml, which explore.py writes for
@@ -24,6 +30,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TAP_DELAY = 0.15
 MAX_SCROLLS = 3
+# Height of one picker-wheel row in points, measured on the time picker (iOS 26.5).
+WHEEL_ROW = 31
+# Rows per drag: a short drag stays inside the wheel, which shows about 8 rows.
+WHEEL_ROWS_PER_DRAG = 3
 # Edge strips where iOS keeps touches for its own gestures (status bar, home indicator):
 # a tap there may never reach the app even when the hit-test names a control.
 TOP_INSET, BOTTOM_INSET = 50, 34
@@ -193,6 +203,42 @@ def safe_tap(label, index=0, element_type=None, delay=TAP_DELAY):
                   "It may sit under a sheet, an alert, or a bar that scrolling cannot clear."
 
 
+def wheels(nodes, label=None):
+    """Picker wheels, top to bottom and left to right: adjustable elements that are not scroll bars."""
+    found = [n for n in flatten(nodes)
+             if n.get("type") in ("Slider", "PickerWheel", "Adjustable")
+             and "scroll bar" not in (n.get("AXLabel") or "").lower()
+             and (label is None or (n.get("AXLabel") or "") == label)]
+    return sorted(found, key=lambda n: (round(rect(n)[1]), rect(n)[0]))
+
+
+def turn_wheel(rows, index=0, label=None):
+    """Turn a wheel by rows: positive shows later values (the wheel moves up), negative earlier."""
+    screen = Screen()
+    found = wheels(screen.tree(), label)
+    if index >= len(found):
+        named = f" labeled '{label}'" if label else ""
+        return False, f"No wheel{named} at index {index} on screen ({len(found)} found). Open the picker first."
+    wheel = found[index]
+    x, y, w, h = rect(wheel)
+    before = wheel.get("AXValue")
+    cx, cy = x + w / 2, y + h / 2
+    left = rows
+    while left:
+        step = max(-WHEEL_ROWS_PER_DRAG, min(WHEEL_ROWS_PER_DRAG, left))
+        distance = step * WHEEL_ROW
+        # Dragging up moves the wheel's content up, so a later value comes to the middle.
+        screen.drag((cx, cy + distance / 2), (cx, cy - distance / 2))
+        time.sleep(0.7)
+        left -= step
+    after_nodes = wheels(screen.tree(), label)
+    after = after_nodes[index].get("AXValue") if index < len(after_nodes) else None
+    name = describe(wheel) if wheel.get("AXLabel") else f"wheel {index}"
+    if after == before and rows:
+        return False, f"Dragged {name} by {rows} rows, but its value did not change ({before})."
+    return True, f"Turned {name} by {rows} rows. Read the new value from the control's snapshot."
+
+
 TOOLS = [{
     "name": "safe_tap",
     "description": (
@@ -215,6 +261,27 @@ TOOLS = [{
         "required": ["label"],
         "additionalProperties": False,
     },
+}, {
+    "name": "turn_wheel",
+    "description": (
+        "Turn a picker wheel, such as the hour or minute column of an open time picker, by whole "
+        "rows. Picker wheels have no elementRef in the snapshot, so use this instead of drag or "
+        "swipe. Wheels are numbered from 0, left to right (hours 0, minutes 1 in a time picker). "
+        "Positive rows show later values, negative rows earlier ones; values wrap around. "
+        "Afterwards call snapshot_ui and read the new value from the control that opened the picker."),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "rows": {"type": "integer", "minimum": -24, "maximum": 24,
+                     "description": "Rows to turn: +1 is the next value (for example 21 to 22), -1 the previous"},
+            "index": {"type": "integer", "minimum": 0, "default": 0,
+                      "description": "Which wheel, left to right: 0 for hours, 1 for minutes"},
+            "label": {"type": "string",
+                      "description": "Optional: only wheels with this accessibility label, for wheels that have one"},
+        },
+        "required": ["rows"],
+        "additionalProperties": False,
+    },
 }]
 
 
@@ -229,14 +296,17 @@ def handle(message):
     if method == "tools/list":
         return {"tools": TOOLS}
     if method == "tools/call":
-        args = params.get("arguments") or {}
-        if params.get("name") != "safe_tap":
-            return {"content": [{"type": "text", "text": f"Unknown tool {params.get('name')}"}], "isError": True}
+        args, name = params.get("arguments") or {}, params.get("name")
+        if name not in ("safe_tap", "turn_wheel"):
+            return {"content": [{"type": "text", "text": f"Unknown tool {name}"}], "isError": True}
         try:
-            ok, text = safe_tap(str(args["label"]), int(args.get("index", 0)),
-                                args.get("elementType"), float(args.get("delay", TAP_DELAY)))
+            if name == "safe_tap":
+                ok, text = safe_tap(str(args["label"]), int(args.get("index", 0)),
+                                    args.get("elementType"), float(args.get("delay", TAP_DELAY)))
+            else:
+                ok, text = turn_wheel(int(args["rows"]), int(args.get("index", 0)), args.get("label"))
         except Exception as error:  # Reported to the bot as a failed call, not a crash of the server.
-            ok, text = False, f"safe_tap failed: {error}"
+            ok, text = False, f"{name} failed: {error}"
         return {"content": [{"type": "text", "text": text}], "isError": not ok}
     raise KeyError(method)
 
@@ -261,5 +331,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "--tap":
         # Manual check from a terminal: python3 scripts/probe_tools.py --tap "Decrement"
         print(safe_tap(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 0))
+    elif len(sys.argv) > 2 and sys.argv[1] == "--wheel":
+        # Manual check with a picker open: python3 scripts/probe_tools.py --wheel -13 0
+        print(turn_wheel(int(sys.argv[2]), int(sys.argv[3]) if len(sys.argv) > 3 else 0))
     else:
         main()
