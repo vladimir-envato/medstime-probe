@@ -11,8 +11,9 @@ simulatorName: iPhone 17 Pro
 launchArgs: ["-mock-store", "-hide-debug-tab"]
 # UserDefaults that a scenario with skipOnboarding: true writes after install, before launch.
 skipOnboardingDefaults: {"onboarding.finished": true}
-# Optional: pin an exact simulator by UDID (`xcrun simctl list devices`).
-# simulatorId:
+# Pins the exact simulator by UDID (`xcrun simctl list devices`): iPhone 17 Pro on iOS 26.5.
+# Without it, simulatorName picks the newest iOS runtime with that name.
+simulatorId: 7B34DDF1-D35D-44A2-A24B-5732C1BB10F0
 ---
 
 Medication reminder app. Users add medications with doses and times, get
@@ -28,6 +29,11 @@ through iCloud. Premium features sit behind a subscription paywall.
   bottom (Next or Done) over a scrolling list. Controls lower in the list
   (Add time, the dose + and -, Times) sit under that button until you scroll
   up.
+- A medication time (the time button next to each dose on Medication Times)
+  opens a small popover with two wheels, hours and minutes in steps of 5.
+  Set it with `turn_wheel` (index 0 hours, 1 minutes); it returns the time
+  the button now shows. Minutes do not carry into hours. Tap outside the popover, or
+  the next control, to close it.
 - Use made-up medication names and doses, never real personal data.
 
 ## Launch arguments

@@ -139,6 +139,12 @@ to a model.
   as step 1. Segments have 10 steps; a tail under 3 steps joins the previous
   segment (`SEGMENT_STEPS` and `MIN_SEGMENT_STEPS` in `explore.py`). Longer
   segments did not cost less: they read less cache but wrote more output.
+- **Empty segments**: a segment that takes no step usually means the bot
+  stopped with checks left, not that the app is stuck. The next segment gets
+  `IDLE_NOTE` (pick the first check not done yet and work on it); only a
+  second empty segment in a row ends the run as stuck. Earlier, one empty
+  segment ended the run, and two MM-030 runs stopped at 132 and 140 of 300
+  steps with work left.
 - **Structured result**: the bot returns its segment log through the
   `StructuredOutput` tool, which Claude Code checks against
   `scripts/segment_schema.json`. If Haiku writes the JSON as text instead,
@@ -168,15 +174,16 @@ to a model.
 - **Screenshots**: the bot takes them with `returnFormat: "base64"`, so the
   image comes back to the model and it actually sees the screen (with `path`
   it only got a file path it could not open). It takes at most two per
-  segment (`SCREENSHOT_LIMIT` in `explore.py`), since every image stays in
+  segment by default (`SCREENSHOT_LIMIT` in `explore.py`; a scenario can set
+  `screenshotLimit`), since every image stays in
   its context for the rest of the segment: when a tap had no effect or opened
   an unexpected screen, when something looks wrong, and for the purple error
-  popup. It refers to them by number (1, 2); `explore.py` takes those images
+  popup. It refers to them by number (1, 2, ...); `explore.py` takes those images
   from the segment log (Claude's tool results or Codex's MCP results), saves
   the ones a step or finding names into `screenshots/`, then removes all image
   data from the log and deletes the copies Claude Code keeps under
   `~/.claude/projects/.../<session>/tool-results/`. A finding needs a
-  screenshot unless both are used and neither shows the problem.
+  screenshot unless all are used and none shows the problem.
 - **Covered controls**: the snapshot lists a control even when a fixed
   button, bar, keyboard, or sheet covers it, or the screen edge cuts it off;
   a tap there hits what is on top. The bot scrolls such a control into the
@@ -237,14 +244,15 @@ Scenario front matter:
 | `model` | Bot model for this scenario, for example `claude-sonnet-5-5`; default Haiku 4.5. The web UI preselects it, and `--model` or another choice in the UI replaces it |
 | `reportModel` | Model that writes the report, one of `claude-sonnet-5-5`, `claude-opus-5-5`, `gpt-6-sol`; default Sonnet 5.5. `--report-model` or the UI replaces it |
 | `tapDelay` | Touch length of a tap in seconds; default `0.15`. `autonomous-full-app` uses `0.165` |
+| `screenshotLimit` | Screenshots the bot may take per segment; default `2`. More screenshots let it document more findings, but each stays in its context for the rest of the segment. `mm-030` uses `3` |
 
 The body has `## Goal`, `## Persona`, and an optional `## Done when`. Leave out
 `Done when` for open-ended exploration.
 
-## safe_tap (`scripts/probe_tools.py`)
+## safe_tap and turn_wheel (`scripts/probe_tools.py`)
 
 A second MCP server in `.mcp.json` (`probe-tools`), standard library only,
-with one tool. `safe_tap` takes a control's label (plus `index` and
+with two tools. `safe_tap` takes a control's label (plus `index` and
 `elementType` when several match), hit-tests the control's middle with AXe
 (`describe-ui --point`), and taps only where the control itself is on top.
 If something covers it, it drags the content clear of the cover, slowly so
@@ -261,6 +269,25 @@ by hand on the current screen:
 
 ```
 python3 scripts/probe_tools.py --tap "Decrement"
+```
+
+`turn_wheel` turns a picker wheel, such as the hour or minute column of the
+time picker popover, by whole rows (`rows`, positive for later values;
+`index` 0 for the leftmost wheel). Picker wheels have no label, so
+MobileBuildMCP lists no elementRef for them, and the only ref in the popover,
+`dismiss popup`, is the area around it: a `drag` there closes the picker,
+which is how an earlier run lost its 08:00 times. `turn_wheel` finds the
+wheels in the AXe tree (unlabeled `Slider` elements that are not scroll bars),
+and drags the chosen one slowly through its middle, at most 3 rows of 31 pt
+per drag, so it moves by exactly that many rows without a fling. It reports
+an error when the wheel's value did not change, and otherwise returns the value
+now shown by the control that opened the picker ("Time Picker: 08:00"): the
+wheels' own values are raw positions, and hours and minutes are separate
+wheels, so turning minutes past 55 does not change the hour. Without that
+value a run kept landing one hour short. With the picker open:
+
+```
+python3 scripts/probe_tools.py --wheel -13 0
 ```
 
 ## MobileBuildMCP

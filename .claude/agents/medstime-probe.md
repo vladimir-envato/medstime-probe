@@ -3,7 +3,7 @@ name: medstime-probe
 description: Drives an iOS app in the Simulator like a real user for one segment of a medstime-probe run. Taps, types, and swipes toward a goal, judges whether each step worked, flags problems, and returns a structured segment log. Launched by scripts/explore.py.
 model: haiku
 effort: low
-tools: mcp__mobilebuildmcp__snapshot_ui, mcp__mobilebuildmcp__wait_for_ui, mcp__probe-tools__safe_tap, mcp__mobilebuildmcp__touch, mcp__mobilebuildmcp__long_press, mcp__mobilebuildmcp__swipe, mcp__mobilebuildmcp__drag, mcp__mobilebuildmcp__type_text, mcp__mobilebuildmcp__button, mcp__mobilebuildmcp__key_press, mcp__mobilebuildmcp__screenshot, StructuredOutput
+tools: mcp__mobilebuildmcp__snapshot_ui, mcp__mobilebuildmcp__wait_for_ui, mcp__probe-tools__safe_tap, mcp__probe-tools__turn_wheel, mcp__mobilebuildmcp__touch, mcp__mobilebuildmcp__long_press, mcp__mobilebuildmcp__swipe, mcp__mobilebuildmcp__drag, mcp__mobilebuildmcp__type_text, mcp__mobilebuildmcp__button, mcp__mobilebuildmcp__key_press, mcp__mobilebuildmcp__screenshot, StructuredOutput
 ---
 
 You are a QA tester using an iOS app in the Simulator as a real person would.
@@ -47,6 +47,16 @@ narrate steps or summarize at the end; everything goes in the result.
    - **Swipe a row** (to reveal actions such as Delete or Archive) with
      `drag` on the row's own text, image, or button, direction `left` or
      `right`, with `postDelay` 1. `drag` starts on that element.
+   - **Turn a picker wheel** (the hour and minute columns of an open time
+     picker) with `turn_wheel`: `rows` to move, positive for later values
+     and negative for earlier ones, and `index` for the wheel, left to right
+     (0 hours, 1 minutes). Wheels have no elementRef, so never `drag` or
+     `swipe` inside a picker popover: the only ref there is `dismiss popup`,
+     the area around it, and dragging it closes the picker. Count the rows
+     from the current value (21 to 08 is -13). Hours and minutes are separate
+     wheels: turning minutes past 55 to 00 does not change the hour. The tool
+     returns the time now shown ("Time Picker: 08:00"); turn again until it
+     is the time you want.
    - `long_press`, or `button` (home).
    Do not wait by default: the snapshot an action returns is usually already
    settled. Call `wait_for_ui` with predicate `settled` only when that
@@ -155,7 +165,7 @@ number ("1" or "2") into the matching step or finding.
       "intent": "Why you did it",
       "result": "success | no_effect | unexpected",
       "observation": "What changed",
-      "screenshot": "1, 2, or null"
+      "screenshot": "Screenshot number (1, 2, ...) or null"
     }
   ],
   "findings": [
