@@ -237,7 +237,7 @@ Scenario front matter:
 | `name` | Title in the report |
 | `freshStart` | `true` uninstalls the app first: no data, no permissions |
 | `maxSteps` | Step budget for the whole run |
-| `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account) |
+| `launchArgs` | Optional launch arguments, for example `["-reset-onboarding"]`; added after the app's own `launchArgs` from `app.md` (MedsTime: `-mock-store`, so purchases need no App Store account). `["-AppleLanguages", "(sr-Latn)", "-AppleLocale", "sr_Latn_RS"]` runs the app in Serbian without changing the simulator's language, as `localization-sr` does (`localization-en` runs it in English) |
 | `thinking` | `"off"` runs a Claude bot without extended thinking (`MAX_THINKING_TOKENS=0`), for fast runs such as Autonomous - Fast random taps (`autonomous-fast`); a `:no-thinking` model does the same for one run |
 | `skipOnboarding` | `true` writes the app's `skipOnboardingDefaults` (from `app.md`) into its UserDefaults after install, so it opens past onboarding |
 | `allowAlarms` | `true` makes the bot allow alarms as well as notifications, in onboarding and on the system alerts; by default it skips alarms. Used by Autonomous - Full app, permissions allowed (`autonomous-full-app`) |
